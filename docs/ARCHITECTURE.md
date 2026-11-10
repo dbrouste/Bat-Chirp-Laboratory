@@ -10,18 +10,28 @@
 - **Bat-Acoustic-Analyser** : création, révision et export des références humaines ;
   visualisation ultérieure des erreurs dans l'interface graphique.
 
-## Connecteur d'algorithme, phase transitoire
+## Connecteurs d'algorithme et score indépendant
 
-Le laboratoire appelle actuellement `benchmark.reassignment_detector_seeds.evaluate`
-à l'intérieur du dépôt de traitement externe. Cette API produit des trajectoires
-évaluées par la méthode SNR actuelle. **Les agrégats sont recalculés par le
-laboratoire** (`laboratory/aggregation.py`) et les données de chaque expérience
-sont identifiées par les empreintes WAV, annotation, sources et paramètres.
+Deux modes sont disponibles :
+
+- `--scoring snr` conserve le connecteur historique
+  `benchmark.reassignment_detector_seeds.evaluate`, avec agrégats recalculés
+  localement (`laboratory/aggregation.py`).
+- `--scoring geometry` appelle directement les fonctions de détection/suivi
+  du dépôt de traitement **sans semence manuelle**
+  (`laboratory/geometry_benchmark.py`), puis calcule en interne le score
+  géométrique (`laboratory/geometry.py`). Les seuils d'acceptation peuvent
+  être calibrés sur des exemples humains (`laboratory/calibration.py`).
+
+Les caches sont distincts par mode et configuration. Les données de chaque
+expérience sont identifiées par les empreintes WAV, annotations, sources et
+paramètres.
 
 Une étape ultérieure remplacera ce connecteur transitoire par un contrat neutre :
 `detect(wav, parameters) -> liste de courbes (temps, fréquence, confiance)`.
-Le laboratoire pourra alors appliquer sa propre géométrie aux courbes sans que
-l'algorithme testé n'ait accès à l'implémentation du score.
+Le laboratoire pourra alors comparer davantage de détecteurs à travers la même
+interface. Déjà dans le mode géométrique, l'algorithme testé ne reçoit aucune
+référence manuelle pendant sa détection et son suivi.
 
 ## Principes de validation
 
@@ -40,8 +50,10 @@ l'algorithme testé n'ait accès à l'implémentation du score.
 
 1. **Phase 1** : migrations et benchmarks SNR reproductibles ; tests sur vrais
    WAV à exécuter sur le PC de l'utilisateur.
-2. **Phase 2** : calcul indépendant du score géométrique à 20 perpendiculaires,
-   queues, knees et harmoniques ; chronométrage par étape.
+2. **Phase 2 — expérimentale** : calcul indépendant du score géométrique à 20
+   normales, queues, knees et harmoniques ; calibration supervisée des seuils ;
+   chronométrage détaillé par étape restant à faire, validation sur vrais WAV
+   à effectuer sur le PC cible.
 3. **Phase 3** : Optuna, espaces de paramètres, budgets d'essais, validation
    multiobjectif et classement des variantes sans fuite des données de test.
 4. **Phase 4** : agent de recherche (Codex ou équivalent) dans des espaces Git

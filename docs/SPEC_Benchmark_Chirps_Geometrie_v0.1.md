@@ -6,6 +6,12 @@
 
 **Statut :** proposition à discuter et valider **avant toute implantation**. Les seuils marqués « proposés » ne sont pas des paramètres déjà validés expérimentalement.
 
+**Mise à jour (novembre 2026) :** une implémentation expérimentale de cette
+proposition se trouve désormais dans `Bat-Chirp-Laboratory/laboratory/geometry.py`.
+Les critères de seuil restent **provisoires** tant que la calibration sur des
+annotations réelles décrite dans `CALIBRATION_GEOMETRIQUE.md` n'a pas été faite.
+Cette spécification conserve son statut historique v0.1.
+
 ## 1. Objectif
 
 Quantifier de manière reproductible :

@@ -12,8 +12,13 @@ les annotations humaines proviennent notamment de
 agrégation indépendante, exécution multiprocessus compatible Windows, cache
 par WAV, historique SQLite, et rapport HTML autonome.
 
-**Non implémentés :** score géométrique à 20 perpendiculaires (sa spécification
-est dans `docs/`), recherche automatique Optuna, agent IA et interface de
+**Phase 2 expérimentale :** score géométrique indépendant à 20 normales locales,
+appariement un-à-un, SNR de référence calculé sur les annotations humaines,
+pénalités de couverture et de prolongement. Calibration supervisée des seuils
+avec jeux développement/validation/test séparés par nuit d'enregistrement.
+Les seuils par défaut ne sont **pas encore calibrés sur des chirps réels**.
+
+**Non implémentés :** recherche automatique Optuna, agent IA et interface de
 pilotage. Le laboratoire actuel n'est donc pas encore un agent autonome.
 
 ## Installation sur Windows
@@ -58,6 +63,37 @@ une nouvelle analyse.
 Sans `--processing-root`, le programme cherche par défaut un clone
 `../bat_full_spectrum_processing` à côté du dépôt du laboratoire.
 
+### Score géométrique (expérimental)
+
+Ajouter `--scoring geometry` à la commande précédente. Ce mode fait tourner
+le détecteur **sans l'aider avec les annotations manuelles**, suit toutes ses
+propositions, puis compare les courbes aux 20 normales de chaque chirp manuel.
+Le rapport HTML donne un score de 0 à 100, le rappel pondéré selon le SNR et
+les trajectoires non retrouvées. Le mode historique reste `--scoring snr`.
+
+Le score utilise : pente principale du chirp manuel normalisée à −45° ;
+tolérance 5 kHz à SNR ≤15 dB, 3 kHz à SNR ≥35 dB ; poids SNR de 1 à 3 ;
+prolongement final seulement accepté s'il suit la tangente de fin.
+
+Pour calibrer les seuils d'acceptation, constituer un fichier JSON d'exemples
+étiquetés `expected_good=true/false`, avec `id`, `group` (nuit/session),
+`split=development|validation|test`, `snr_max_db`, `manual_points` et
+`automatic_points` (coordonnées `[temps_ms, fréquence_kHz]`). Voir
+[`docs/CALIBRATION_GEOMETRIQUE.md`](docs/CALIBRATION_GEOMETRIQUE.md).
+
+```powershell
+.\.venv\Scripts\python.exe -m laboratory.calibration `
+  --examples "D:\BatLaboratory\geometry_examples.json" `
+  --output "D:\BatLaboratory\geometry_calibration.json"
+
+.\.venv\Scripts\python.exe -m laboratory `
+  --processing-root "D:\Python\bat_full_spectrum_processing" `
+  --annotations "D:\Bat\annotations" --wav-dir "D:\Bat\WAV" `
+  --out "D:\BatLaboratory\geometry-results" --workers 4 `
+  --scoring geometry `
+  --geometry-config "D:\BatLaboratory\geometry_calibration.json"
+```
+
 ## Vérification
 
 ```powershell
@@ -74,7 +110,6 @@ dans le dossier voisin. Il est ignoré sinon.
 - [Architecture et feuille de route](docs/ARCHITECTURE.md)
 - [Spécification du score géométrique](docs/SPEC_Benchmark_Chirps_Geometrie_v0.1.md)
 
-**Important :** les premières métriques mesurent les erreurs fréquentielles
-normalisées par le SNR et le rappel de détection. Les faux positifs ne sont pas
-validement mesurables sans annotations explicitement exhaustives. Aucun score
-géométrique final ni aucune amélioration algorithmique ne sont revendiqués.
+**Important :** aucun score géométrique final ni aucune amélioration
+algorithmique sur le corpus réel ne sont encore revendiqués. Les faux positifs
+ne sont valablement comptés que si les annotations sont explicitement exhaustives.

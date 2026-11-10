@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import asdict
 from datetime import datetime, timezone
 import importlib.metadata
 import json
@@ -67,7 +68,8 @@ def git_info(repo: Path) -> dict:
 
 
 def _worker(name: str, record: dict, wav_root: str, options: dict,
-            processing_root: str) -> dict:
+            processing_root: str, scoring: str = "snr",
+            geometry_options: dict | None = None) -> dict:
     """One WAV per worker: no shared mutable processing state."""
     started = perf_counter()
     try:
@@ -75,13 +77,18 @@ def _worker(name: str, record: dict, wav_root: str, options: dict,
         # into or modified by the laboratory.
         if processing_root not in sys.path:
             sys.path.insert(0, processing_root)
-        from benchmark.reassignment_detector_seeds import evaluate
+        if scoring == "geometry":
+            from .geometry_benchmark import evaluate_file
+            report = evaluate_file(name, record, wav_root, options,
+                                   geometry_options or {})
+        else:
+            from benchmark.reassignment_detector_seeds import evaluate
 
-        with tempfile.TemporaryDirectory(prefix="chirp_lab_") as folder:
-            annotation = Path(folder) / "single.json"
-            annotation.write_text(json.dumps({"files": {name: record}},
-                                             ensure_ascii=False), encoding="utf-8")
-            report = evaluate(annotation, wav_root, **options)
+            with tempfile.TemporaryDirectory(prefix="chirp_lab_") as folder:
+                annotation = Path(folder) / "single.json"
+                annotation.write_text(json.dumps({"files": {name: record}},
+                                                 ensure_ascii=False), encoding="utf-8")
+                report = evaluate(annotation, wav_root, **options)
         return {"file": name, "per_file": report["per_file"],
                 "details": report["details"], "elapsed_s": perf_counter() - started}
     except Exception as exc:
@@ -135,8 +142,10 @@ def _record_experiment(db: Path, report: dict, output: Path) -> None:
             meta["run_id"], meta["created_utc"], meta["status"],
             meta["git_commit"], meta["code_fingerprint"],
             meta["dataset_fingerprint"], json.dumps(meta["options"]),
-            meta["duration_s"], totals["weighted_detector_recall"],
-            totals["weighted_full_pipeline_within_tolerance_fraction"],
+            meta["duration_s"], totals.get("weighted_detector_recall",
+                                           totals.get("weighted_recall")),
+            totals.get("weighted_full_pipeline_within_tolerance_fraction",
+                       totals.get("weighted_trajectory_score")),
             str(output.resolve()),
         ))
 
@@ -144,7 +153,8 @@ def _record_experiment(db: Path, report: dict, output: Path) -> None:
 def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
         max_files: int | None = None, options: dict | None = None,
         use_cache: bool = True,
-        processing_root: Path = DEFAULT_PROCESSING_ROOT) -> dict:
+        processing_root: Path = DEFAULT_PROCESSING_ROOT, scoring: str = "snr",
+        geometry_config: dict | None = None) -> dict:
     """Evaluate WAVs independently and aggregate using the existing benchmark.
 
     Unlike a parameter sweep, a run never writes to the input WAV or annotation
@@ -154,6 +164,14 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
         raise ValueError("workers must be between 1 and 8")
     if max_files is not None and max_files < 1:
         raise ValueError("max_files must be positive")
+    if scoring not in {"snr", "geometry"}:
+        raise ValueError("scoring must be 'snr' or 'geometry'")
+    if scoring == "geometry":
+        from .geometry import GeometryConfig
+        geometry_config = dict(geometry_config or {})
+        geometry_config = asdict(GeometryConfig(**geometry_config))
+    elif geometry_config:
+        raise ValueError("geometry_config requires scoring='geometry'")
     params = dict(DEFAULT_OPTIONS)
     if options:
         unknown = set(options) - set(params)
@@ -190,7 +208,8 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
     cache_count = 0
     for name, record in records.items():
         key = stable_hash({"name": name, "input": inputs[name],
-                           "code": source_hash, "options": params})
+                           "code": source_hash, "options": params,
+                           "scoring": scoring, "geometry_config": geometry_config})
         cache_file = cache_root / f"{key}.json"
         cached = _read_cache(cache_file) if use_cache else None
         if cached is None:
@@ -201,7 +220,7 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
     if workers == 1:
         for name, record, cache_file in pending:
             result = _worker(name, record, str(wav_dir), params,
-                             str(processing_root))
+                             str(processing_root), scoring, geometry_config)
             results[name] = result
             if "traceback" not in result and not any(
                     "error" in row for row in result["per_file"]):
@@ -211,7 +230,7 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
         with ProcessPoolExecutor(max_workers=workers,
                                  mp_context=multiprocessing.get_context("spawn")) as pool:
             futures = {pool.submit(_worker, name, record, str(wav_dir), params,
-                                   str(processing_root)):
+                                   str(processing_root), scoring, geometry_config):
                        (name, cache_file) for name, record, cache_file in pending}
             for future in as_completed(futures):
                 name, cache_file = futures[future]
@@ -230,9 +249,13 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
     ordered = [results[name] for name in records]
     per_file = [row for item in ordered for row in item["per_file"]]
     details = [row for item in ordered for row in item["details"]]
-    totals = summarize_results(per_file, details,
-                               low_snr_importance_weight=params[
-                                   "low_snr_importance_weight"])
+    if scoring == "geometry":
+        from .geometry_benchmark import aggregate
+        totals = aggregate(per_file, details)
+    else:
+        totals = summarize_results(per_file, details,
+                                   low_snr_importance_weight=params[
+                                       "low_snr_importance_weight"])
     now = datetime.now(timezone.utc)
     duration = perf_counter() - started
     status = "complete" if totals["files_missing"] == 0 else "incomplete"
@@ -245,7 +268,10 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
         "processing_root": str(processing_root),
         "code_fingerprint": source_hash, "dataset_fingerprint": dataset_hash,
         "ground_truth": "manual + validated only",
-        "scoring_protocol": "existing SNR trajectory benchmark (not geometric v1)",
+        "scoring_protocol": ("geometry v1 (uncalibrated thresholds unless provided)"
+                             if scoring == "geometry" else
+                             "existing SNR trajectory benchmark"),
+        "scoring": scoring, "geometry_config": geometry_config,
         "annotations": str(Path(annotations).resolve()), "wav_dir": str(wav_dir),
         "options": params, "workers": workers,
         "files_from_cache": cache_count,
@@ -290,11 +316,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--low-snr-weight", type=float, default=0.2)
     parser.add_argument("--no-echo-trim", action="store_true")
     parser.add_argument("--no-cache", action="store_true")
+    parser.add_argument("--scoring", choices=("snr", "geometry"), default="snr")
+    parser.add_argument("--geometry-config", type=Path, default=None,
+                        help="Calibration JSON (from python -m laboratory.calibration)")
     args = parser.parse_args(argv)
+    if args.geometry_config is not None and args.scoring != "geometry":
+        parser.error("--geometry-config requires --scoring geometry")
+    geometry_options = None
+    if args.geometry_config is not None:
+        contents = json.loads(args.geometry_config.read_text(encoding="utf-8"))
+        geometry_options = contents.get("config", contents)
     report = run(annotations=args.annotations, wav_dir=args.wav_dir,
                  out=args.out, workers=args.workers, max_files=args.max_files,
                  use_cache=not args.no_cache,
                  processing_root=args.processing_root,
+                 scoring=args.scoring, geometry_config=geometry_options,
                  options={"n_fft": args.n_fft, "hop": args.hop,
                           "max_per_file": args.max_per_file,
                           "v4_general_min_width_ms": args.general_min_width_ms,
@@ -305,7 +341,8 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps({"status": report["metadata"]["status"],
                       "wav_evaluated": totals["files_evaluated"],
                       "manual_chirps": totals["annotated"],
-                      "weighted_detector_recall": totals["weighted_detector_recall"],
+                      "weighted_detector_recall": totals.get("weighted_detector_recall",
+                                                             totals.get("weighted_recall")),
                       "duration_s": report["metadata"]["duration_s"],
                       "report": str((args.out / "report.html").resolve())},
                      ensure_ascii=False, indent=2))

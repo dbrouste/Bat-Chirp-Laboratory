@@ -82,7 +82,8 @@ def test_runner_caches_results_without_changing_manual_json(tmp_path, monkeypatc
         "# placeholder\n")
     invoked = []
 
-    def fake_worker(name, record, wav_dir, options, processing_root):
+    def fake_worker(name, record, wav_dir, options, processing_root,
+                    scoring="snr", geometry_config=None):
         invoked.append(name)
         return {"file": name, "elapsed_s": 1.0, "details": [
             {"file": name, "chirp_id": 1, "snr_max_db": 40.,
@@ -156,3 +157,29 @@ def test_spawn_workers_end_to_end_on_silent_wavs(tmp_path):
     assert report["totals"]["files_evaluated"] == 2
     assert report["totals"]["annotated"] == 0
     assert report["metadata"]["files_from_cache"] == 0
+
+
+@pytest.mark.skipif(
+    not (PROCESSING_ROOT / "benchmark" / "reassignment_detector_seeds.py").is_file(),
+    reason="External processing checkout required for integration test")
+def test_geometry_spawn_workers_end_to_end_on_silent_wavs(tmp_path):
+    import numpy as np
+    import soundfile as sf
+
+    wav_root = tmp_path / "wav"
+    wav_root.mkdir()
+    for name in ("a.wav", "b.wav"):
+        sf.write(wav_root / name, np.zeros(19200), 384000)
+    annotations = tmp_path / "manual.json"
+    annotations.write_text(json.dumps({"files": {
+        name: {"chirps": []} for name in ("a.wav", "b.wav")}}),
+        encoding="utf-8")
+    report = runner.run(annotations=annotations, wav_dir=wav_root,
+                        out=tmp_path / "results", workers=2,
+                        processing_root=PROCESSING_ROOT, scoring="geometry")
+    assert report["metadata"]["status"] == "complete"
+    assert report["totals"]["files_evaluated"] == 2
+    assert report["totals"]["annotated"] == 0
+    assert report["totals"]["false_positive_count"] is None
+    assert "géométrique" in (tmp_path / "results" / "report.html").read_text(
+        encoding="utf-8")

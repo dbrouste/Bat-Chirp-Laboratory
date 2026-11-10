@@ -1,10 +1,10 @@
 # Laboratoire local de chirps — première phase
 
-**État :** exécution reproductible du benchmark existant, sans agent IA et sans
-optimisation Optuna pour le moment. Le score géométrique à 20 perpendiculaires
-reste la proposition du document
-[`SPEC_Benchmark_Chirps_Geometrie_v0.1.md`](SPEC_Benchmark_Chirps_Geometrie_v0.1.md),
-pas encore un indicateur du laboratoire.
+**État :** benchmark SNR existant et mode géométrique v1 à 20 normales
+implémentés ; les seuils géométriques doivent encore être calibrés sur des
+chirps réels. Pas d'agent IA ni d'optimisation Optuna pour le moment. Lire
+[`CALIBRATION_GEOMETRIQUE.md`](CALIBRATION_GEOMETRIQUE.md) avant de comparer
+deux variantes de l'algorithme.
 
 ## PC cible
 
@@ -84,6 +84,15 @@ Les paramètres déjà exposés peuvent être modifiés avec `--n-fft`, `--hop`,
 `--general-min-width-ms`, `--search-margin-ms`, `--low-snr-weight` et
 `--no-echo-trim`.
 
+Le mode `--scoring geometry` emploie les mêmes WAV, validations et caches,
+mais produit un **score géométrique de 0 à 100** par chirp, une couverture et
+une pénalité pour les queues déviant de la tangente de fin. Le mode par défaut
+reste `--scoring snr` pour ne pas changer les rapports précédents.
+
+Après avoir constitué le jeu supervisé d'exemples, lancer la calibration et
+passer `--geometry-config D:\BatLaboratory\geometry_calibration.json` au mode
+géométrique. Sans fichier de calibration, les seuils sont **provisoires**.
+
 ## Règles du benchmark
 
 1. Seuls les chirps portant **`source=manual` ET `status=validated`** sont
@@ -102,7 +111,7 @@ Les paramètres déjà exposés peuvent être modifiés avec `--n-fft`, `--hop`,
 
 1. Construire un corpus figé avec séparation par session/nuit, dont un jeu de
    test final jamais consulté pendant l'optimisation.
-2. Implémenter et valider la spécification géométrique avec ses cas tests :
+2. Calibrer les seuils de la spécification géométrique sur les cas réels :
    queues suivant un écho, chirps tronqués, harmoniques simultanées, knees.
 3. Ajouter les chronomètres des étapes spectrogramme / détection / modelling
    / simplification, puis les caches **intermédiaires** seulement lorsque leur
