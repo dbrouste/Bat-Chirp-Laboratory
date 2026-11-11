@@ -33,6 +33,33 @@ rendre le JSON incoherent. Les fichiers WAV sans JSON ne sont pas copies.
 Un JSON avec un WAV manquant ou une entree invalide est exclu entierement
 et signale dans warnings.csv. Les autres JSON valides sont conserves.
 
+## Filtrer les JSON provenant d'autres applications
+
+Le laboratoire distingue deux generations de fichiers :
+
+1. **Nouveaux JSON** : champ `created_by` exactement egal a
+   `Bat-Acoustic-Analyser`. Le nom du JSON peut etre quelconque, mais
+   `schema_version=1`, `units.time=ms`, `units.frequency=kHz` et
+   `files` doivent etre conformes.
+2. **JSON historiques sans created_by** : memes schema, units et files, ET
+   nom du JSON identique a celui du dossier contenant (ex.
+   `Noumea_2026/Noumea_2026.json`).
+
+Pour les deux formats, la presence d'au moins un chirp
+`source=manual`, `status=validated` avec au moins deux points
+`t_ms/f_khz` numeriques et finis, de temps distincts, est indispensable.
+Un document signalant un autre `created_by` est toujours rejete.
+
+Tous les fichiers JSON ignores ou invalides sont repertories dans
+`warnings.csv` avec leur nom et la raison (y compris les fichiers JSON
+d'autres categories). Le recapitulatif `summary.json` indique separement
+`json_tagged_accepted` et `json_legacy_accepted`.
+
+**Attention :** une detection structurelle ne peut pas prouver absolument
+l'origine d'un ancien fichier sans identifiant. Le choix strict du nom
+de dossier minimise le risque de contamination, au prix de pouvoir
+exclure d'anciens fichiers renommes. Ils restent intacts sur le disque.
+
 ## Lancer sous Windows (PowerShell)
 
 Depuis la racine du depot Bat-Chirp-Laboratory :
