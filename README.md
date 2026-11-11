@@ -6,6 +6,26 @@ détection et le suivi des chirps ultrasonores. Le code d'analyse audio reste da
 les annotations humaines proviennent notamment de
 [`dbrouste/Bat-Acoustic-Analyser`](https://github.com/dbrouste/Bat-Acoustic-Analyser).
 
+## Géométrie partagée
+
+Le module canonique `chirp_geometry` calcule les normales et les
+intersections géométriques en `kHz_eq` ; l'audit V2 et le benchmark du dépôt
+`bat_full_spectrum_processing` l'utilisent tous deux. Il n'y a **qu'une**
+implémentation des conversions temps–fréquence et des normales.
+
+Pour activer le mode géométrique lors d'un lancement autonome de
+`bat_full_spectrum_processing`, installer ce module dans son environnement :
+
+```powershell
+python -m pip install -e ..\\Bat-Chirp-Laboratory
+```
+
+La méthode de référence ancienne (erreurs verticales en kHz) demeure disponible
+comme `vertical_legacy`, tandis que le laboratoire demande explicitement
+`square_normals_v1`. Les seuils SNR de 3–5 `kHz_eq` sont exploratoires et
+doivent être recalibrés. La mesure géométrique actuelle n'inclut pas encore
+les pénalités de prolongement des queues prévues par la spécification.
+
 ## État du projet
 
 **Phase 1 opérationnelle :** index de corpus WAV/JSON, benchmark SNR existant,

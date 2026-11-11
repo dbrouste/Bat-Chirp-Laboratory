@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from chirp_geometry import square_time_scale, reference_normals
+
 
 def sample_bilinear(times_ms, freqs_khz, db, query_t, query_f):
     """Bilinear sample, NaN outside grid, for 1D/2D query coordinates."""
@@ -37,35 +39,6 @@ def sample_bilinear(times_ms, freqs_khz, db, query_t, query_f):
               + (1-wt)*wf*z[b+1,a] + wt*wf*z[b+1,a+1])
     out[valid] = values
     return out.reshape(qt.shape)
-
-
-def square_time_scale(annotation_t_ms, annotation_f_khz, *,
-                      near_horizontal_limit_khz_per_ms=1.0,
-                      fallback_khz_per_ms=10.0):
-    """One fixed square time-frequency calibration for a manual chirp.
-
-    The scale uses the entire manual annotation's bounding spans; it is
-    independent of annotation point density, local slopes, detected peaks
-    and user interface zoom. Horizontal/near-horizontal chirps use an
-    explicit degenerate-case fallback rather than a zero time scale.
-    """
-    t = np.asarray(annotation_t_ms, dtype=float)
-    f = np.asarray(annotation_f_khz, dtype=float)
-    if (t.ndim != 1 or f.ndim != 1 or len(t) < 2
-            or t.shape != f.shape or not np.all(np.isfinite(t))
-            or not np.all(np.isfinite(f)) or np.any(np.diff(t) <= 0)):
-        raise ValueError("invalid manual chirp for square calibration")
-    if (not np.isfinite(near_horizontal_limit_khz_per_ms)
-            or near_horizontal_limit_khz_per_ms <= 0
-            or not np.isfinite(fallback_khz_per_ms)
-            or fallback_khz_per_ms <= 0):
-        raise ValueError("invalid square calibration fallback")
-    scale = float(np.ptp(f) / (t[-1] - t[0]))
-    if not np.isfinite(scale):
-        raise ValueError("invalid square calibration time scale")
-    if scale < near_horizontal_limit_khz_per_ms:
-        return float(fallback_khz_per_ms), "near_horizontal_fallback"
-    return scale, "square"
 
 
 def continuous_normal_ridge(times_ms, freqs_khz, db,
@@ -97,16 +70,12 @@ def continuous_normal_ridge(times_ms, freqs_khz, db,
         raise ValueError("penalties must be nonnegative")
 
     sample_t = np.linspace(t[0], t[-1], count)
-    sample_f = np.interp(sample_t, t, f)
-    local_slopes = np.diff(f) / np.diff(t)
-    segment = np.clip(np.searchsorted(t[1:], sample_t, side="right"), 0, len(local_slopes)-1)
-    slope = local_slopes[segment]
-    # Calibrate the complete manual chirp ONCE, not from each local slope
-    # or from the display zoom. Steep chirps are not clipped.
-    scale, normalization_mode = square_time_scale(t, f)
-    # Normal of tangent (scale,slope) in normalized (u,f) space.
-    normal_u = -slope / np.hypot(scale, slope)
-    normal_f = scale / np.hypot(scale, slope)
+    geometry = reference_normals(t, f, sample_t)
+    sample_f = geometry["reference_freqs_khz"]
+    normal_u = geometry["normal_u"]
+    normal_f = geometry["normal_f"]
+    scale = geometry["time_scale_khz_per_ms"]
+    normalization_mode = geometry["normalization_mode"]
     offsets = np.arange(-radius_khz, radius_khz+step_khz*0.5, step_khz)
     candidate_t = sample_t[:, None] + (normal_u[:, None] * offsets) / scale
     candidate_f = sample_f[:, None] + normal_f[:, None] * offsets

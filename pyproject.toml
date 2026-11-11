@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bat-chirp-geometry"
+version = "0.1.0"
+description = "Shared square-normalized time-frequency geometry for bat chirp scoring"
+requires-python = ">=3.10"
+dependencies = ["numpy"]
+
+[tool.setuptools]
+packages = ["chirp_geometry"]
