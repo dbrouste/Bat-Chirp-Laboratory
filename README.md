@@ -137,3 +137,19 @@ python tools/audit_acoustic.py --dataset "C:\Users\damien\Documents\Python\Pytho
 Les paramètres de STFT, de recouvrement et de soustraction spectrale
 sont personnalisables pour retrouver les réglages de l'interface.
 [Guide et limites de l'audit acoustique](docs/AUDIT_ACOUSTIQUE.md).
+
+## Audit acoustique V2 — profils perpendiculaires et continuité
+
+`tools/audit_acoustic_v2.py` réutilise la représentation mixte STFT 65 %
+/ Reassignment 35 % de Bat-Acoustic-Analyser, et teste une **crête continue
+sur profils perpendiculaires** aux annotations manuelles.
+
+```powershell
+python tools/audit_acoustic_v2.py --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" --output "C:\Users\damien\Documents\Python\Python-data\acoustic-v2-normals" --max-chirps 10 --plot-top 5
+```
+
+Il exporte `acoustic_chirps_v2.csv`, `annotation_review_queue.csv`
+(avec chemins sources du manifeste), un résumé JSON et les fichiers HTML
+interactifs des cas prioritaires. Le jeu test n'est jamais traité et les
+annotations ne sont pas modifiées. Voir
+[la documentation de l'audit V2](docs/AUDIT_ACOUSTIQUE_V2.md).
