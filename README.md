@@ -87,7 +87,7 @@ Il copie les JSON complets et les WAV référencés dans des jeux `calibration/`
 et `test/` (80/20 cible), sans modifier les fichiers d'origine.
 
 ```powershell
-py -3.12 tools/build_dataset.py --source "D:\\MesEnregistrements" --output "D:\\BatLaboratory\\dataset-v1"
+py -3.12 tools/build_dataset.py --source "D:\MesEnregistrements" --output "D:\BatLaboratory\dataset-v1"
 ```
 
 Le fichier `manifest.csv` assure la traçabilité. Les cas exclus sont répertoriés
