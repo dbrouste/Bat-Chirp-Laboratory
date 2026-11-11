@@ -35,6 +35,33 @@ contient la différence fréquentielle signée, qui dépend aussi de la
 déviation temporelle de la normale. Le signe positif signifie que
 la crête calculée est **au-dessus de l'annotation en fréquence**.
 
+## Résolution temporelle de l'image mixte (correctif)
+
+Le calcul initial utilisait une STFT 1024/75 %, soit un hop de
+**256 échantillons (667 µs à 384 kHz)**, trop grossier pour analyser
+un chirp de 2 à 3 ms. Même si le Reassignment possédait une grille
+plus fine, la fusion est **rééchantillonnée sur la grille de la STFT**
+dans le pipeline de l'annotateur.
+
+L'audit V2 conserve **exactement** cette fonction de fusion, mais
+impose désormais par défaut un hop STFT de **32 échantillons maximum**
+(83,3 µs à 384 kHz) et un hop Reassignment explicite de
+**16 échantillons** (41,7 µs à 384 kHz). Si le recouvrement demandé est
+encore plus important, l'audit conserve le plus petit hop obtenu.
+
+Les options sont `--stft-hop 32` et `--reassignment-hop 16`.
+Pour augmenter la finesse, utiliser par exemple
+`--stft-hop 16 --reassignment-hop 8`, avec un coût de calcul supérieur.
+Le budget de colonnes est automatiquement augmenté pour honorer le hop
+Reassignment demandé, dans une limite de sécurité de 10 000 colonnes.
+L'HTML indique les hops *effectifs* en échantillons et microsecondes.
+Les paramètres STFT (taille FFT / hop) et Reassignment (512 / hop) restent
+indépendants, mais la fusion se fait toujours sur la grille STFT.
+
+**Les anciens rapports V2 doivent être régénérés** : les scores et
+visualisations calculés avec le hop grossier ne sont pas comparables
+directement aux nouveaux scores. Les seuils demeurent non calibrés.
+
 Le suivi est volontairement ancré à la trajectoire manuelle. Il peut
 mal interpréter un harmonique, un écho, un croisement de chirps, une
 annotation insuffisamment longue ou une faible énergie locale. Les
@@ -54,6 +81,8 @@ python tools/audit_acoustic_v2.py `
   --reassignment-percent 35 `
   --fft-size 1024 `
   --overlap 0.75 `
+  --stft-hop 32 `
+  --reassignment-hop 16 `
   --max-chirps 10 `
   --plot-top 5
 ~~~
