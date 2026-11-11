@@ -142,6 +142,30 @@ def _record_experiment(db: Path, report: dict, output: Path) -> None:
         ))
 
 
+def remove_excluded_references(records: dict[str, dict]) -> tuple[dict[str, dict], int]:
+    """Remove only manually annotated chirps explicitly excluded by human QA.
+
+    WAVs and source JSONs are untouched; other chirps in the same recording
+    remain available. Never interpret unannotated events as review failures.
+    """
+    filtered = {}
+    excluded = 0
+    for name, record in records.items():
+        updated = []
+        for chirp in record.get("chirps", []):
+            quality = chirp.get("annotation_quality") if isinstance(chirp, dict) else None
+            if (isinstance(chirp, dict)
+                    and chirp.get("source") == "manual"
+                    and chirp.get("status") == "validated"
+                    and isinstance(quality, dict)
+                    and quality.get("status") == "excluded"):
+                excluded += 1
+                continue
+            updated.append(chirp)
+        filtered[name] = {**record, "chirps": updated}
+    return filtered, excluded
+
+
 def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
         max_files: int | None = None, options: dict | None = None,
         use_cache: bool = True,
@@ -175,6 +199,7 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
     out = Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     records = collect_annotations(Path(annotations), wav_dir)
+    records, excluded_count = remove_excluded_references(records)
     if max_files is not None:
         records = dict(list(records.items())[:max_files])
     inputs = fingerprint_inputs(records, wav_dir)
@@ -247,7 +272,8 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
         "algorithm_git": algorithm_git, "laboratory_git": laboratory_git,
         "processing_root": str(processing_root),
         "code_fingerprint": source_hash, "dataset_fingerprint": dataset_hash,
-        "ground_truth": "manual + validated only",
+        "ground_truth": "manual + validated, excluding annotation_quality=excluded",
+        "excluded_manual_references": excluded_count,
         "scoring_protocol": params["geometry_mode"],
         "geometry_distance_unit": ("kHz_eq" if params["geometry_mode"] == "square_normals_v1"
                                    else "kHz_vertical"),
