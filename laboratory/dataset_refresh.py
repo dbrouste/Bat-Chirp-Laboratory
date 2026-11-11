@@ -32,7 +32,9 @@ def within(root: Path, relative: str) -> Path:
     return path
 
 
-def refresh_annotations(dataset: Path, wav_name: str, *,
+def refresh_annotations(dataset: Path, wav_name: str | None = None, *,
+                        dataset_wav_path: str | None = None,
+                        source_root_override: Path | None = None,
                         allow_test: bool = False, dry_run: bool = False) -> dict:
     root = dataset.resolve()
     manifest = root / "manifest.csv"
@@ -44,18 +46,40 @@ def refresh_annotations(dataset: Path, wav_name: str, *,
         if not fields:
             raise ValueError("empty manifest")
         rows = list(reader)
-    matches = [r for r in rows if Path(r["source_wav"]).name.casefold() == wav_name.casefold()]
+    if dataset_wav_path is not None:
+        # Full dataset-relative path disambiguates same-named WAVs in other sessions.
+        wanted = dataset_wav_path.replace("\\\\", "/").replace("\\", "/").casefold()
+        matches = [r for r in rows if r["dataset_wav"].replace("\\", "/").casefold() == wanted]
+    elif wav_name is not None:
+        matches = [r for r in rows if Path(r["source_wav"]).name.casefold() == wav_name.casefold()]
+    else:
+        raise ValueError("a WAV basename or dataset-relative WAV path is required")
     if len(matches) != 1:
-        raise ValueError(f"expected one matching WAV named {wav_name!r}, found {len(matches)}")
+        raise ValueError(f"expected one matching WAV for {dataset_wav_path or wav_name!r}, found {len(matches)}")
     selected = matches[0]
     if selected["partition"] == "test" and not allow_test:
         raise ValueError("test partition is locked; do not tune it during calibration")
-    source_json = Path(selected["source_json"]).resolve()
+    source_root = Path(source_root_override).resolve() if source_root_override else None
+
+    def original_path(record: dict, kind: str) -> Path:
+        if source_root is None:
+            return Path(record["source_" + kind]).resolve()
+        # Mirrors the source-root relocation in Bat-Acoustic-Analyser.
+        prefix = f'{record["partition"]}/{("wav" if kind == "wav" else "annotations")}/'
+        relative = record["dataset_" + kind].replace("\\", "/")
+        if not relative.casefold().startswith(prefix.casefold()):
+            raise ValueError(f"invalid dataset {kind} path: {relative}")
+        candidate = (source_root / relative[len(prefix):]).resolve()
+        if not candidate.is_relative_to(source_root):
+            raise ValueError(f"source {kind} path outside selected source root")
+        return candidate
+
+    source_json = original_path(selected, "json")
     dataset_json = within(root, selected["dataset_json"])
     related = [r for r in rows if r["dataset_json"] == selected["dataset_json"]]
     if not source_json.is_file() or not dataset_json.is_file():
         raise ValueError("source JSON or existing dataset JSON missing")
-    if any(Path(r["source_json"]).resolve() != source_json for r in related):
+    if any(original_path(r, "json") != source_json for r in related):
         raise ValueError("manifest JSON source conflict")
     source = json.loads(source_json.read_text(encoding="utf-8-sig"))
     original = json.loads(dataset_json.read_text(encoding="utf-8-sig"))
@@ -77,7 +101,7 @@ def refresh_annotations(dataset: Path, wav_name: str, *,
             raise ValueError(f"invalid annotation entry for {name}")
         new_counts[name] = chirp_counts(new_files[name])
         validate_manual_curves(new_files[name], name)
-        source_wav = Path(r["source_wav"]).resolve()
+        source_wav = original_path(r, "wav")
         dataset_wav = within(root, r["dataset_wav"])
         # Do not silently replace audio or allow source WAV changes.
         if not source_wav.is_file() or not dataset_wav.is_file():
@@ -94,7 +118,9 @@ def refresh_annotations(dataset: Path, wav_name: str, *,
         r.update(json_sha256=new_hash, validated_manual=str(manual),
                  manual_not_validated=str(pending),
                  automatic_proposals=str(automatic))
-    result = {"wav": wav_name, "partition": selected["partition"],
+    result = {"wav": Path(selected["source_wav"]).name,
+              "dataset_wav": selected["dataset_wav"],
+              "partition": selected["partition"],
               "json": str(source_json), "affected_wavs": len(related),
               "manual_chirps_before": manual_before,
               "manual_chirps_in_updated_json": sum(c[0] for c in new_counts.values()),
@@ -142,20 +168,78 @@ def refresh_annotations(dataset: Path, wav_name: str, *,
     return result
 
 
+def refresh_all_changed(dataset: Path, *, source_root_override: Path | None = None,
+                        dry_run: bool = False) -> dict:
+    """Synchronize changed calibration JSONs once each; never touch test data.
+
+    First preflight every changed session so a broken manifest or a replaced WAV
+    aborts before any corpus file is updated.
+    """
+    root = Path(dataset).resolve()
+    with (root / "manifest.csv").open(encoding="utf-8-sig", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    sessions: dict[str, dict] = {}
+    for row in rows:
+        if row.get("partition") != "calibration":
+            continue
+        key = row["dataset_json"].replace("\\", "/").casefold()
+        sessions.setdefault(key, row)
+    checks = [
+        refresh_annotations(
+            root, dataset_wav_path=row["dataset_wav"],
+            source_root_override=source_root_override, dry_run=True)
+        for row in sessions.values()
+    ]
+    changed = [check for check in checks if check["changed"]]
+    summary = {
+        "dataset": str(root), "dry_run": dry_run,
+        "sessions_checked": len(checks), "sessions_changed": len(changed),
+        "sessions_refreshed": 0,
+        "affected_wavs": sum(check["affected_wavs"] for check in changed),
+        "changed_sessions": [
+            {"json": check["json"], "dataset_wav": check["dataset_wav"],
+             "affected_wavs": check["affected_wavs"]}
+            for check in changed],
+        "test_partition_untouched": True,
+    }
+    if not dry_run:
+        for check in changed:
+            refresh_annotations(
+                root, dataset_wav_path=check["dataset_wav"],
+                source_root_override=source_root_override)
+            summary["sessions_refreshed"] += 1
+    return summary
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, required=True)
-    parser.add_argument("--wav", required=True, help="Exact WAV basename to refresh")
+    selection = parser.add_mutually_exclusive_group(required=True)
+    selection.add_argument("--wav", help="WAV basename (must be unique in manifest)")
+    selection.add_argument("--dataset-wav", help="Exact dataset-relative WAV path")
+    selection.add_argument("--all-changed", action="store_true",
+                           help="Safely refresh all changed calibration JSONs")
+    parser.add_argument("--source-root", type=Path,
+                        help="Relocated originals root, matching the QA review dialog")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--allow-test", action="store_true",
-                        help="Explicitly unlock a test session; not for calibration")
+                        help="Unlock a single test session explicitly (never in batch)")
     args = parser.parse_args(argv)
     try:
-        result = refresh_annotations(args.dataset, args.wav,
-                                     dry_run=args.dry_run,
-                                     allow_test=args.allow_test)
+        if args.all_changed:
+            if args.allow_test:
+                raise ValueError("--all-changed never updates the test partition")
+            result = refresh_all_changed(args.dataset,
+                                         source_root_override=args.source_root,
+                                         dry_run=args.dry_run)
+        else:
+            result = refresh_annotations(args.dataset, args.wav,
+                                         dataset_wav_path=args.dataset_wav,
+                                         source_root_override=args.source_root,
+                                         dry_run=args.dry_run,
+                                         allow_test=args.allow_test)
     except (ValueError, OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
-        parser.exit(2, f"Error: {exc}\n")
+        parser.exit(2, f"Error: {exc}\\n")
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 
