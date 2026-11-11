@@ -4,7 +4,7 @@
 
 **Projets concernés :** bat_full_spectrum_processing (calcul) et Bat-Acoustic-Analyser (visualisation, dans un second temps).
 
-**Statut :** proposition à discuter et valider **avant toute implantation**. Les seuils marqués « proposés » ne sont pas des paramètres déjà validés expérimentalement.
+**Statut :** la normalisation carrée est implémentée dans `laboratory/transverse_ridge.py` (audit V3). Le reste du benchmark décrit ici (intersections manuel/auto, couverture, prolongements et score global) demeure une spécification à implémenter. Les seuils restent à calibrer expérimentalement.
 
 ## 1. Objectif
 
@@ -20,7 +20,7 @@ La comparaison doit être possible entre plusieurs branches/commits de détectio
 
 ### 1.1 Principes retenus
 
-- Normaliser chaque chirp pour que **la pente principale manuelle devienne −45°** dans un repère temps-fréquence.
+- Normaliser le chirp avec une **échelle temps–fréquence carrée** définie à partir de l'annotation manuelle, indépendamment des pentes locales.
 - Calibrer les deux axes **à partir du chirp manuel seulement**.
 - Comparer les trajectoires avec **20 perpendiculaires** tracées en des points répartis le long de la courbe manuelle.
 - Pénaliser une trajectoire automatique trop courte.
@@ -460,7 +460,7 @@ Prévoir des tests de sensibilité aux choix de **10, 20 et 40 perpendiculaires*
 
 1. **Normales locales ou fixes à +45° ?** Le document retient les tangentes **locales**, afin de respecter les knees. Vérifier que cela correspond à la géométrie souhaitée.
 2. **Extrémités :** inclure les deux points de bout dans les 20, ou éviter leurs tangentes moins stables (par exemple 5 % de marge), tout en mesurant la couverture des bouts séparément ?
-3. **Tolérance :** conserver \(T_f/\sqrt{2}\) comme corridor géométrique de référence, ou calibrer empiriquement le corridor perpendiculaire sur le corpus manuel ?
+3. **Tolérance :** calibrer empiriquement le corridor perpendiculaire directement en kHz équivalents sur le corpus manuel, en fonction du SNR.
 4. **Prolongement excessif :** une queue parfaitement alignée mais deux fois plus longue que le chirp doit-elle rester gratuite ?
 5. **Pondération des manques :** la formule \(100CQ\) donne une très forte pénalité aux trajectoires raccourcies ; est-ce bien l'effet recherché ?
 6. **Fragmentation :** une association principale plus un fragment supplémentaire, ou autoriser une union des fragments pour un score diagnostique secondaire (jamais pour le score principal) ?

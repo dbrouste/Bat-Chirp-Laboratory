@@ -151,6 +151,9 @@ def test_evaluate_v2_uses_display_pipeline(tmp_path):
     result=evaluate_chirp_v2(path,chirp(),fake_display)
     assert result["median_signed_frequency_khz"]>0
     assert 0<=result["support_fraction_3khz"]<=1
+    assert result["normalization_mode"]=="square"
+    assert result["median_abs_normal_khz_eq"]==result["median_abs_normal_khz"]
+    assert result["support_fraction_3khz_eq"]==result["support_fraction_3khz"]
 
 
 def test_run_v2_excludes_test_and_emits_queue(tmp_path,monkeypatch):
