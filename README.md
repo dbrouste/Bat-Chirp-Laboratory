@@ -28,13 +28,14 @@ les pénalités de prolongement des queues prévues par la spécification.
 
 ## État du projet
 
-**Phase 1 opérationnelle :** index de corpus WAV/JSON, benchmark SNR existant,
-agrégation indépendante, exécution multiprocessus compatible Windows, cache
-par WAV, historique SQLite, et rapport HTML autonome.
+**Phase 1 opérationnelle :** index WAV/JSON, métriques de géométrie carrée
+perpendiculaire partagées avec le benchmark SNR, agrégation indépendante,
+exécution multiprocessus Windows, cache par WAV, historique SQLite et rapport
+HTML autonome.
 
-**Non implémentés :** score géométrique à 20 perpendiculaires (sa spécification
-est dans `docs/`), recherche automatique Optuna, agent IA et interface de
-pilotage. Le laboratoire actuel n'est donc pas encore un agent autonome.
+**Non implémentés :** score géométrique complet avec contrôle des prolongements
+et des fragmentations (spécification dans `docs/`), recherche Optuna, agent IA
+et interface de pilotage. Le laboratoire n'est pas encore un agent autonome.
 
 ## Installation sur Windows
 
@@ -52,6 +53,12 @@ Depuis PowerShell dans `D:\Python\Bat-Chirp-Laboratory` :
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
+
+Le mode par défaut du laboratoire est maintenant `square_normals_v1`.
+Pour reproduire un ancien benchmark vertical, fournir
+`options={"geometry_mode": "vertical_legacy"}` dans l'API Python.
+Les rapports portent le champ `metadata.scoring_protocol` et les résultats
+anciens ne sont **pas directement comparables** aux nouveaux.
 
 ### Premier essai (3 WAV)
 

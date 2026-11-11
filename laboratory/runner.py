@@ -33,6 +33,7 @@ DEFAULT_OPTIONS = {
     "n_fft": None, "hop": None, "max_per_file": None,
     "v4_general_min_width_ms": None, "search_margin_ms": None,
     "trim_echo_rebound": True, "low_snr_importance_weight": 0.2,
+    "geometry_mode": "square_normals_v1",
 }
 
 
@@ -162,6 +163,8 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
         params.update(options)
     if not 0 < params["low_snr_importance_weight"] <= 1:
         raise ValueError("low_snr_importance_weight must be in (0, 1]")
+    if params["geometry_mode"] not in ("square_normals_v1", "vertical_legacy"):
+        raise ValueError("invalid geometry_mode")
 
     processing_root = Path(processing_root).resolve()
     if not (processing_root / "bat_analysis" / "detection.py").is_file() or not (
@@ -245,7 +248,10 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
         "processing_root": str(processing_root),
         "code_fingerprint": source_hash, "dataset_fingerprint": dataset_hash,
         "ground_truth": "manual + validated only",
-        "scoring_protocol": "existing SNR trajectory benchmark (not geometric v1)",
+        "scoring_protocol": params["geometry_mode"],
+        "geometry_distance_unit": ("kHz_eq" if params["geometry_mode"] == "square_normals_v1"
+                                   else "kHz_vertical"),
+        "geometric_tolerances_calibrated": False,
         "annotations": str(Path(annotations).resolve()), "wav_dir": str(wav_dir),
         "options": params, "workers": workers,
         "files_from_cache": cache_count,

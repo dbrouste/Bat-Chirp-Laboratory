@@ -1,7 +1,8 @@
-"""Independent aggregation of the existing SNR benchmark's per-WAV results.
+"""Independent SNR-weighted aggregation of the benchmark's explicit protocol.
 
-This evaluator stays in the laboratory, not inside a codebase that the future
-optimization agent will be allowed to modify. Geometry v1 is separate.
+In square_normals_v1, within_snr_tolerance_fraction measures covered manual
+normals with geometric (kHz_eq) error inside provisional SNR bands.
+Historical vertical distances remain diagnostics and are not relabeled.
 """
 
 from __future__ import annotations
@@ -55,6 +56,12 @@ def summarize_by_snr(details):
             "tracking_succeeded": sum(bool(r.get("tracking_success")) for r in rows),
             "mean_tracking_error_khz": _mean(r["mean_full_interval_error_khz"]
                                              for r in tracked),
+            "mean_geometric_error_khz_eq": _mean(
+                r["mean_geometric_error_khz_eq"] for r in tracked
+                if r.get("mean_geometric_error_khz_eq") is not None),
+            "mean_geometric_coverage_fraction": _mean(
+                r["geometric_coverage_fraction"] for r in tracked
+                if r.get("geometric_coverage_fraction") is not None),
             "mean_normalized_error": _mean(r["mean_normalized_error"] for r in tracked),
             "mean_coverage_fraction": _mean(r["coverage_fraction"] for r in tracked),
             "mean_start_error_ms": _mean(r["start_error_ms"] for r in tracked),
@@ -78,6 +85,12 @@ def summarize_results(per_file, details, *, low_snr_importance_weight=0.2):
         "mean_tracking_error_khz": _mean(r["mean_full_interval_error_khz"]
                                          for r in details
                                          if r.get("mean_full_interval_error_khz") is not None),
+        "mean_geometric_error_khz_eq": _mean(
+            r["mean_geometric_error_khz_eq"] for r in details
+            if r.get("mean_geometric_error_khz_eq") is not None),
+        "mean_geometric_coverage_fraction": _mean(
+            r["geometric_coverage_fraction"] for r in details
+            if r.get("geometric_coverage_fraction") is not None),
         "mean_normalized_error": _mean(r["mean_normalized_error"]
                                       for r in details if r.get("mean_normalized_error") is not None),
         "mean_within_snr_tolerance_fraction": _mean(r["within_snr_tolerance_fraction"]

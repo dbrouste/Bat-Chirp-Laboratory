@@ -31,11 +31,17 @@ def write_html(report: dict, path: Path) -> None:
                       xaxis_title="SNR manuel (dB)",
                       yaxis_title="Erreur normalisée (0 = non suivi si rouge)")
     totals = report["totals"]
+    geometry = report.get("metadata", {}).get("scoring_protocol") == "square_normals_v1"
     summary = [("WAV évalués", totals["files_evaluated"]),
                ("Chirps manuels", totals["annotated"]),
                ("Candidats", totals["candidates"]),
                ("Détectés", totals["matched"]),
                ("Suivis", totals["tracked"]),
+               ("Écart normal moyen (kHz_eq)", totals.get("mean_geometric_error_khz_eq"))
+               if geometry else ("Écart vertical moyen (kHz)",
+                                 totals.get("mean_tracking_error_khz")),
+               ("Couverture des normales", totals.get("mean_geometric_coverage_fraction"))
+               if geometry else ("Couverture temporelle", None),
                ("Rappel pondéré", totals["weighted_detector_recall"]),
                ("Suivi tolérance pondéré", totals[
                    "weighted_full_pipeline_within_tolerance_fraction"])]
@@ -50,7 +56,9 @@ def write_html(report: dict, path: Path) -> None:
             "margin:2rem auto;max-width:1100px;color:#203040}table{border-collapse:collapse}"
             "th,td{padding:.5rem 1rem;border-bottom:1px solid #ddd;text-align:left}"
             "</style></head><body><h1>Laboratoire de chirps</h1>"
-            "<p>Benchmark existant SNR/trajectoire (pas encore le score géométrique v1). "
+            f"<p>Protocole : {escape(str(report.get('metadata', {}).get('scoring_protocol')))}. "
+            "Le score géométrique utilise les distances perpendiculaires en kHz_eq "
+            "et une couverture explicite ; les seuils SNR restent exploratoires. "
             "Les chirps non suivis ont une ordonnée zéro uniquement pour l'affichage.</p>"
             f"<table>{rows}</table>{plot}<h2>WAV en erreur</h2><ul>{bad}</ul>"
             "</body></html>")
