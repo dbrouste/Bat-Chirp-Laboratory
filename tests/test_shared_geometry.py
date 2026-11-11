@@ -55,3 +55,13 @@ def test_explicit_near_horizontal_fallback_and_invalid_inputs():
         square_time_scale([20, 20], [70, 80])
     with pytest.raises(ValueError, match="invalid predicted"):
         compare_normal_curves([20, 24], [80, 70], [22, 21], [75, 76], [22])
+
+
+def test_detector_peak_point_to_curve_distance_uses_square_geometry():
+    from chirp_geometry import point_distance_to_manual_curve
+    manual_t = [20, 24]
+    manual_f = [120, 40]
+    assert point_distance_to_manual_curve(
+        manual_t, manual_f, 21, 103) == pytest.approx(3/np.sqrt(2))
+    assert point_distance_to_manual_curve(
+        [20, 24], [70, 70], 22, 73) == pytest.approx(3)

@@ -132,3 +132,25 @@ def compare_normal_curves(annotation_t_ms, annotation_f_khz,
         "matched_freqs_khz": hit_f,
         "protocol": PROTOCOL,
     }
+
+
+def point_distance_to_manual_curve(annotation_t_ms, annotation_f_khz,
+                                   point_t_ms, point_f_khz):
+    """Shortest point-to-manual-polyline distance in geometric kHz_eq.
+
+    Used for initial detector-peak matching only; trajectory evaluation
+    still uses ordered intersections of manual normals, not nearest points.
+    """
+    t = np.asarray(annotation_t_ms, dtype=float)
+    f = np.asarray(annotation_f_khz, dtype=float)
+    scale, _ = square_time_scale(t, f)
+    if not np.isfinite([point_t_ms, point_f_khz]).all():
+        raise ValueError("invalid candidate peak")
+    u = (t - t[0]) * scale
+    point_u = (float(point_t_ms) - t[0]) * scale
+    point_f = float(point_f_khz)
+    du, df = np.diff(u), np.diff(f)
+    proj = ((point_u-u[:-1])*du + (point_f-f[:-1])*df)
+    alpha = np.clip(proj / np.maximum(du*du+df*df, 1e-20), 0., 1.)
+    return float(np.min(np.hypot(point_u-u[:-1]-alpha*du,
+                                 point_f-f[:-1]-alpha*df)))
