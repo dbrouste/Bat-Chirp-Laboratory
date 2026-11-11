@@ -148,6 +148,12 @@ sur profils perpendiculaires** aux annotations manuelles.
 python tools/audit_acoustic_v2.py --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" --output "C:\Users\damien\Documents\Python\Python-data\acoustic-v2-normals" --max-chirps 10 --plot-top 5
 ```
 
+La fusion prend maintenant une STFT à hop **32 échantillons max** et
+le Reassignment à hop **16 échantillons**, configurables par
+`--stft-hop` et `--reassignment-hop`. Cela corrige l'ancien hop STFT
+de 256 échantillons qui produisait des spectrogrammes en gros blocs
+sur les chirps courts ; relancer les audits antérieurs pour comparer.
+
 Il exporte `acoustic_chirps_v2.csv`, `annotation_review_queue.csv`
 (avec chemins sources du manifeste), un résumé JSON et les fichiers HTML
 interactifs des cas prioritaires. Le jeu test n'est jamais traité et les
