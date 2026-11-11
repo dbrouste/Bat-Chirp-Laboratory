@@ -239,8 +239,8 @@ def main(argv: list[str] | None = None) -> int:
                                          dry_run=args.dry_run,
                                          allow_test=args.allow_test)
     except (ValueError, OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
-        parser.exit(2, f"Error: {exc}\\n")
-    print(json.dumps(result, indent=2, ensure_ascii=False))
+        parser.exit(2, f"Error: {exc}\n")
+    print(json.dumps(result, indent=2, ensure_ascii=True))
     return 0
 
 
