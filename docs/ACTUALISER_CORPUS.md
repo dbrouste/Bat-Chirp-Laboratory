@@ -72,6 +72,6 @@ validé du JSON original**, pas sur sa copie dans le dataset. Choix disponibles 
 par rapport à celle du corpus audité. La date, les empreintes géométriques et
 l'historique des décisions permettent d'auditer les corrections.
 
-Les erreurs d'annotation ne sont pas automatiquement corrigées. Le statut
-`excluded` est **un avis de revue** : son exclusion effective des futurs
-benchmarks nécessitera que le lecteur du laboratoire applique ce filtre.
+Les erreurs d'annotation ne sont pas automatiquement corrigées. Le statut `excluded` est respecté par le benchmark SNR : le chirp manuel validé
+est retiré des références au moment de l'évaluation, sans modifier le JSON.
+Les autres chirps du même WAV restent disponibles.
