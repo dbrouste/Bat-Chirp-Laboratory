@@ -78,3 +78,20 @@ dans le dossier voisin. Il est ignoré sinon.
 normalisées par le SNR et le rappel de détection. Les faux positifs ne sont pas
 validement mesurables sans annotations explicitement exhaustives. Aucun score
 géométrique final ni aucune amélioration algorithmique ne sont revendiqués.
+
+## Préparer un corpus depuis plusieurs dossiers WAV
+
+Le générateur local `tools/build_dataset.py` parcourt récursivement un dossier
+contenant les sous-dossiers de sessions, leurs WAV et les JSON d'annotations.
+Il copie les JSON complets et les WAV référencés dans des jeux `calibration/`
+et `test/` (80/20 cible), sans modifier les fichiers d'origine.
+
+```powershell
+py -3.12 tools/build_dataset.py --source "D:\\MesEnregistrements" --output "D:\\BatLaboratory\\dataset-v1"
+```
+
+Le fichier `manifest.csv` assure la traçabilité. Les cas exclus sont répertoriés
+dans `warnings.csv`. Le jeu de test est regroupé par session pour éviter les
+fuites entre calibration et évaluation finale.
+
+[Guide complet : construction du corpus](docs/CONSTRUIRE_CORPUS.md).
