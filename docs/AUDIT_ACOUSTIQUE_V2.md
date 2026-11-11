@@ -111,3 +111,59 @@ un nouveau répertoire de sortie pour la campagne complète.
 Le script V1 `tools/audit_acoustic.py` reste disponible pour
 des comparaisons sur le même corpus. Il n'y a pas de modification
 automatique des annotations, de l'algorithme de détection ni du split.
+
+
+## Validation du suivi indépendamment des alertes
+
+Le mode `--plot-mode validation` exporte les premiers
+`--plot-top N` chirps **même s'ils ne présentent aucune alerte**,
+pour vérifier visuellement que le suivi ne reste pas artificiellement
+collé à l'annotation. Le mode par défaut `--plot-mode suspects`
+exporte les cas prioritaires.
+
+Le réglage `--plot-detail both` produit deux vues dans chaque HTML :
+le spectrogramme mixte avec les deux trajectoires et une carte des
+**profils perpendiculaires** (intensité relative par profil) avec le
+chemin continu en blanc. On peut choisir seulement `overlay` ou
+`profiles`.
+
+### Injection d'erreurs volontaires
+
+Avec `--validate-shifts --shift-limit 10`, le laboratoire crée
+**en mémoire uniquement** des variantes des 10 premières annotations
+manuelles : +3, +5 et -5 kHz de décalage vertical. Ces erreurs
+synthétiques sont analysées exactement sur le **même WAV**.
+Aucun JSON, WAV ni fichier du corpus n'est modifié.
+
+Un tableau `shift_validation.csv` contient, pour chaque
+perturbation, l'écart normal médian avant/après, la différence et une
+indication de récupération du **sens opposé au décalage**. Cette
+indication est **exploratoire** et ne prouve pas la précision réelle du
+suivi ; en particulier, une erreur verticale de 5 kHz ne correspond
+pas exactement à 5 unités perpendiculaires.
+
+Exemple recommandé après mise à jour du dépôt :
+
+~~~powershell
+git pull origin main
+python -m pytest -q tests/test_transverse_ridge.py
+python tools/audit_acoustic_v2.py `
+  --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" `
+  --output "C:\Users\damien\Documents\Python\Python-data\acoustic-v2-validation" `
+  --reassignment-percent 35 `
+  --fft-size 1024 `
+  --stft-hop 32 `
+  --reassignment-hop 16 `
+  --max-chirps 10 `
+  --plot-top 10 `
+  --plot-mode validation `
+  --plot-detail both `
+  --validate-shifts `
+  --shift-limit 10
+~~~
+
+Consulter `acoustic_summary_v2.json` pour le bilan,
+`shift_validation.csv` pour les récupérations de signe
+et `review_001.html` ... pour les comparaisons visuelles.
+Les faux positifs/négatifs devront être analysés dans Bat-Acoustic-Analyser
+avant de calibrer les seuils de priorité.
