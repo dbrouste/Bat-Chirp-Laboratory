@@ -40,8 +40,10 @@ def test_positive_signed_offset_in_downward_chirp():
     result=continuous_normal_ridge(times,freq,db,t,f,count=20,radius_khz=8,step_khz=0.25)
     assert result["median_signed_normal_khz"]>0
     assert result["median_signed_frequency_khz"]>0
-    assert result["median_abs_normal_khz"]>1
-    assert result["support_fraction_3khz"]<1
+    # A vertical 4 kHz shift along a -2 kHz/ms line maps to about
+    # 4/sqrt(2) ~= 2.83 in our normalized perpendicular coordinates.
+    assert 2.0 < result["median_abs_normal_khz"] < 3.0
+    assert result["support_fraction_3khz"] == 1.0
 
 
 def test_negative_signed_offset_and_continuity_under_distractor():
