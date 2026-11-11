@@ -95,3 +95,17 @@ dans `warnings.csv`. Le jeu de test est regroupé par session pour éviter les
 fuites entre calibration et évaluation finale.
 
 [Guide complet : construction du corpus](docs/CONSTRUIRE_CORPUS.md).
+
+## Auditer la qualité des annotations (calibration uniquement)
+
+Un audit descriptif et non destructif est disponible pour repérer les chirps
+manuels à inspecter visuellement (durée, fréquence, points, segments abrupts,
+retournements, dépassements de la durée du WAV ou de Nyquist).
+
+```powershell
+python tools/audit_annotations.py --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" --output "C:\Users\damien\Documents\Python\Python-data\quality-v1"
+```
+
+Les résultats sont dans `chirp_quality.csv`, `quality_summary.json`
+et `audit_warnings.csv`. Par défaut, le jeu de test n'est pas analysé.
+Voir [Audit des annotations](docs/AUDIT_ANNOTATIONS.md).
