@@ -12,6 +12,7 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -51,6 +52,55 @@ def chirp_counts(entry: dict) -> tuple[int, int, int]:
     return manual, pending, automatic
 
 
+ANNOTATOR_ID = "Bat-Acoustic-Analyser"
+
+
+def verify_annotation_format(data: object, json_path: Path) -> str:
+    """Recognize tagged exports and conservatively accept original app exports.
+
+    The legacy rules intentionally prefer false negatives over contamination:
+    the original application writes <directory-name>.json with schema_version,
+    units and files. A tagged document may have a different filename.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("files"), dict):
+        raise ValueError("not annotation JSON: missing object 'files'")
+    creator = data.get("created_by")
+    if creator is not None and creator != ANNOTATOR_ID:
+        raise ValueError(f"foreign created_by: {creator!r}")
+    if data.get("schema_version") != 1:
+        raise ValueError("unsupported or missing schema_version (expected 1)")
+    units = data.get("units")
+    if not isinstance(units, dict) or units.get("time") != "ms" or units.get("frequency") != "kHz":
+        raise ValueError("missing/invalid units (expected time=ms, frequency=kHz)")
+    if creator is None and json_path.stem != json_path.parent.name:
+        raise ValueError("legacy JSON filename differs from containing directory")
+    return "tagged" if creator == ANNOTATOR_ID else "legacy"
+
+
+def validate_manual_curves(entry: dict, name: str) -> None:
+    """Manual reference points must be finite and contain two distinct times."""
+    for chirp in entry.get("chirps", []):
+        if not isinstance(chirp, dict) or chirp.get("source") != "manual" or chirp.get("status") != "validated":
+            continue
+        points = chirp.get("points")
+        if not isinstance(points, list) or len(points) < 2:
+            raise ValueError(f"invalid manual trajectory in {name!r}: fewer than 2 points")
+        times = []
+        for point in points:
+            if not isinstance(point, dict):
+                raise ValueError(f"invalid manual trajectory in {name!r}: point not an object")
+            try:
+                t = float(point["t_ms"])
+                f = float(point["f_khz"])
+            except (KeyError, ValueError, TypeError, OverflowError) as exc:
+                raise ValueError(f"invalid manual trajectory in {name!r}: invalid t_ms/f_khz") from exc
+            if not math.isfinite(t) or not math.isfinite(f):
+                raise ValueError(f"invalid manual trajectory in {name!r}: non-finite value")
+            times.append(t)
+        if len(set(times)) < 2:
+            raise ValueError(f"invalid manual trajectory in {name!r}: no time span")
+
+
 def wav_path_for_entry(folder: Path, name: str, root: Path) -> Path:
     """Reject path escapes and avoid guessing among similarly named files."""
     if (not name or PureWindowsPath(name).is_absolute()
@@ -83,14 +133,17 @@ def scan_source(root: Path) -> tuple[list[Pair], list[tuple[str, str]], dict]:
                         key=lambda p: p.as_posix().casefold())
     wav_count = sum(p.suffix.lower() == ".wav" for p in root.rglob("*") if p.is_file())
     accepted_json = 0
+    format_counts = Counter()
     for path in json_files:
         try:
             data = json.loads(path.read_text(encoding="utf-8-sig"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             warnings.append((str(path), f"invalid JSON: {exc}"))
             continue
-        if not isinstance(data, dict) or not isinstance(data.get("files"), dict):
-            # Other JSONs (metadata/settings) are not annotation JSONs.
+        try:
+            provenance = verify_annotation_format(data, path)
+        except ValueError as exc:
+            warnings.append((str(path), str(exc)))
             continue
         if not data["files"]:
             warnings.append((str(path), "empty files mapping"))
@@ -102,6 +155,7 @@ def scan_source(root: Path) -> tuple[list[Pair], list[tuple[str, str]], dict]:
                     raise ValueError("invalid files mapping entry")
                 wav = wav_path_for_entry(path.parent, name, root)
                 counts = chirp_counts(entry)
+                validate_manual_curves(entry, name)
                 batch.append((wav, counts))
             paths = [item[0] for item in batch]
             if len(set(paths)) != len(paths):
@@ -125,12 +179,16 @@ def scan_source(root: Path) -> tuple[list[Pair], list[tuple[str, str]], dict]:
                               session, counts, hashes[wav], json_hash))
             claimed.add(wav)
         accepted_json += 1
+        format_counts[provenance] += 1
     duplicate_wavs = sum(n - 1 for n in Counter(p.wav_sha256 for p in pairs).values()
                          if n > 1)
     stats = {"json_scanned": len(json_files), "wav_scanned": wav_count,
              "json_accepted": accepted_json, "wav_accepted": len(pairs),
              "manual_chirps": sum(p.counts[0] for p in pairs),
-             "duplicate_audio_files": duplicate_wavs, "warnings": len(warnings)}
+             "duplicate_audio_files": duplicate_wavs,
+             "json_tagged_accepted": format_counts["tagged"],
+             "json_legacy_accepted": format_counts["legacy"],
+             "warnings": len(warnings)}
     return pairs, warnings, stats
 
 
