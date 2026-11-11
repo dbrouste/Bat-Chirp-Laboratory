@@ -40,6 +40,7 @@ DEFAULT_OPTIONS = {
 def code_fingerprint(processing_root: Path) -> str:
     """Include source edits from both repositories, not only Git commit IDs."""
     files = sorted([*(ROOT / "laboratory").rglob("*.py"),
+                    *(ROOT / "chirp_geometry").rglob("*.py"),
                     *(processing_root / "bat_analysis").rglob("*.py"),
                     *(processing_root / "benchmark").rglob("*.py")])
     files.extend([ROOT / "requirements.txt", processing_root / "requirements.txt"])
