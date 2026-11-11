@@ -148,3 +148,58 @@ def test_fine_grid_can_be_overridden_for_higher_overlap(tmp_path):
     assert plot[-1]["stft_hop_samples"]==8
     assert plot[-1]["reassignment_hop_samples"]==8
     assert row["error"]==""
+
+
+@pytest.mark.parametrize("vertical_shift", [3.0, 5.0, -5.0])
+def test_injected_shift_moves_signed_normal_in_opposite_direction(vertical_shift):
+    """Tests the algorithm's ability to recover a known synthetic error.
+
+    This intentionally does not assume the recovered offset exactly equals
+    the injected vertical kHz shift: the metric is perpendicular in a
+    normalized time/frequency space.
+    """
+    times, freq, db = synthetic_grid(offset_khz=0)
+    manual_t = [20.0, 24.0]
+    true_f = np.asarray([70.0, 62.0])
+    truth = continuous_normal_ridge(
+        times, freq, db, manual_t, true_f,
+        count=20, radius_khz=8, step_khz=0.25)
+    displaced = continuous_normal_ridge(
+        times, freq, db, manual_t, true_f + vertical_shift,
+        count=20, radius_khz=8, step_khz=0.25)
+    delta = displaced["median_signed_normal_khz"] - truth["median_signed_normal_khz"]
+    assert delta * vertical_shift < 0
+    assert abs(delta) >= 0.5
+
+
+def test_validation_mode_plots_no_alert_and_writes_shift_csv(tmp_path, monkeypatch):
+    import laboratory.acoustic_audit_v2 as module
+    root = tmp_path/"dataset"
+    wav = root/"calibration"/"wav"/"night"/"calibration.wav"
+    make_wav(wav)
+    ann = root/"calibration"/"annotations"/"night"/"night.json"
+    ann.parent.mkdir(parents=True,exist_ok=True)
+    ann.write_text(json.dumps({"files":{wav.name:{"chirps":[chirp()]}}}))
+    with (root/"manifest.csv").open("w",newline="") as file:
+        writer=csv.DictWriter(file,fieldnames=["partition","session",
+                   "source_wav","source_json","dataset_wav","dataset_json"])
+        writer.writeheader()
+        writer.writerow({"partition":"calibration","session":"night",
+            "source_wav":str(wav),"source_json":str(ann),
+            "dataset_wav":wav.relative_to(root).as_posix(),
+            "dataset_json":ann.relative_to(root).as_posix()})
+    monkeypatch.setattr(module,"load_display_pipeline",lambda _:fake_display)
+    output=tmp_path/"quality"
+    summary=run_v2(root,output,plot_top=1,plot_mode="validation",
+                   plot_detail="both",validate_shifts=True)
+    assert summary["chirps_processed"]==1
+    assert summary["plot_count"]==1
+    assert summary["plot_mode"]=="validation"
+    assert (output/"review_001.html").is_file()
+    assert "Profils perpendiculaires" in (
+        output/"review_001.html").read_text(encoding="utf-8")
+    with (output/"shift_validation.csv").open(encoding="utf-8-sig") as file:
+        rows=list(csv.DictReader(file))
+    assert [float(r["injected_vertical_shift_khz"]) for r in rows]==[3,5,-5]
+    assert all(r["error"]=="" for r in rows)
+    assert summary["shift_validation_runs"]==3
