@@ -122,3 +122,16 @@ Le JSON complet de la session est synchronisé depuis le répertoire d'origine
 référencé dans le manifeste, avec sauvegarde de la version précédente.
 Le test indépendant reste verrouillé. Voir
 [la procédure de mise à jour](docs/ACTUALISER_CORPUS.md).
+
+## Audit acoustique des références (Flattop 512)
+
+Un outil séparé examine le soutien spectral le long des annotations manuelles
+sur **calibration uniquement**, en réutilisant la réassignation du dépôt
+`bat_full_spectrum_processing`. Il calcule les SNR relatifs, les écarts aux
+crêtes réassignées et les priorités de revue, sans suppression automatique.
+
+```powershell
+python tools/audit_acoustic.py --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" --output "C:\Users\damien\Documents\Python\Python-data\acoustic-v1" --max-chirps 10
+```
+
+[Guide et limites de l'audit acoustique](docs/AUDIT_ACOUSTIQUE.md).
