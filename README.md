@@ -159,3 +159,13 @@ Il exporte `acoustic_chirps_v2.csv`, `annotation_review_queue.csv`
 interactifs des cas prioritaires. Le jeu test n'est jamais traité et les
 annotations ne sont pas modifiées. Voir
 [la documentation de l'audit V2](docs/AUDIT_ACOUSTIQUE_V2.md).
+
+### Validation de l'audit V2
+
+Pour contrôler le suivi même lorsqu'aucune annotation n'est signalée,
+utiliser `--plot-mode validation --plot-detail both --plot-top 10`.
+Pour tester des erreurs artificielles de ±3/5 kHz sans modifier le corpus,
+ajouter `--validate-shifts --shift-limit 10`. La sortie comporte alors
+les visualisations HTML (spectrogramme + profils perpendiculaires) et
+`shift_validation.csv`. Voir
+[la procédure complète](docs/AUDIT_ACOUSTIQUE_V2.md#validation-du-suivi-indépendamment-des-alertes).
