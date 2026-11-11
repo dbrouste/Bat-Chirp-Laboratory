@@ -83,6 +83,9 @@ def fake_display(reader, frames, sr, **kwargs):
     assert kwargs["representation"]=="mixed"
     assert kwargs["reassignment_percent"]==35
     assert kwargs["fft_size"]==1024
+    assert kwargs["overlap_fraction"]==pytest.approx(1-32/1024)
+    assert kwargs["reassignment_hop_samples"]==16
+    assert kwargs["max_columns"]>=1600
     assert reader(0,10).shape==(10,)
     t,f,z=synthetic_grid(offset_khz=3.0)
     return SimpleNamespace(times_s=t/1000,
@@ -124,3 +127,24 @@ def test_run_v2_excludes_test_and_emits_queue(tmp_path,monkeypatch):
         rows=list(csv.DictReader(file))
     assert len(rows)==1 and rows[0]["partition"]=="calibration"
     assert rows[0]["source_wav"]==manifest[0]["source_wav"]
+
+
+def test_fine_grid_can_be_overridden_for_higher_overlap(tmp_path):
+    wav=tmp_path/"test.wav"
+    make_wav(wav)
+    def custom_display(reader,frames,sr,**kwargs):
+        assert kwargs["overlap_fraction"]==pytest.approx(1-8/1024)
+        assert kwargs["reassignment_hop_samples"]==8
+        return fake_display_without_hop_assertions(reader,frames,sr,**kwargs)
+
+    def fake_display_without_hop_assertions(reader,frames,sr,**kwargs):
+        t,f,z=synthetic_grid(offset_khz=3.0)
+        return SimpleNamespace(times_s=t/1000,
+                               frequencies_hz=f*1000,db=z.astype(np.float32))
+
+    row, plot=evaluate_chirp_v2(wav,chirp(),custom_display,
+                                stft_hop_samples=8,reassignment_hop_samples=8,
+                                with_plot=True)
+    assert plot[-1]["stft_hop_samples"]==8
+    assert plot[-1]["reassignment_hop_samples"]==8
+    assert row["error"]==""
