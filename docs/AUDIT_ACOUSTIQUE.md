@@ -1,50 +1,78 @@
-# Audit acoustique du corpus manuel
+# Audit acoustique des annotations manuelles — même image 65/35 que l'annotateur
 
-Cette phase mesure un **soutien spectral local**, pas la justesse absolue
-d'une annotation. Le calcul reste indépendant des algorithmes candidats et
-ne modifie ni WAV, ni JSON, ni la répartition calibration/test.
+L'audit réutilise **directement** la fonction
+`bat_analyser.spectrogram_pipeline.compute_display_representation`
+du dépôt `Bat-Acoustic-Analyser`. Il ne recrée pas la fusion dans le laboratoire.
 
-Méthode actuelle : fonction existante
-\`bat_analysis.reassignment.reassigned_spectrogram\` du dépôt
-\`bat_full_spectrum_processing\`, fenêtre Flattop 512 et hop 64
-(87,5 % de recouvrement). Une fenêtre courte contenant le chirp et
-15 ms de marge de chaque côté est lue dans le WAV, sans charger tout
-l'enregistrement. Le signal est converti en mono par moyenne des canaux.
-Vingt points sont échantillonnés régulièrement entre les bornes manuelles.
+## Réglages par défaut
 
-Pour chaque point : calcul d'un rapport local puissance sur bruit
-estimé dans les trames temporelles situées hors du chirp (marge de 2 ms),
-et mesure de la distance à la crête réassignée dominante dans une bande
-de ±12 kHz et trois trames voisines. Les fréquences dans ±3 kHz de la
-référence servent à estimer le signal. Les métriques produites sont :
+- **65 % STFT Flattop / 35 % Reassignment Flattop** sur les
+  **amplitudes linéaires**, puis conversion en dB.
+- FFT STFT = 1024, recouvrement STFT = 75 % (options du logiciel
+  configurables ; le mode « Auto (zoom) » peut produire un autre recouvrement).
+- Reassignment Flattop FFT = 512, hop adaptatif calculé par l'application.
+- Soustraction spectrale désactivée par défaut (alpha=0) ;
+  fournir `--spectral-alpha 1.7` si elle était active dans l'annotateur.
+- Maximum 1600 colonnes par extrait ; un grand zoom peut donc donner
+  une résolution différente de celle de l'interface.
 
-- \`snr_median_db\`, \`snr_max_db\`, \`snr_p10_db\` : SNR relatifs, non calibrés ;
-- \`ridge_offset_median_khz\`, \`ridge_offset_p90_khz\` ;
-- \`support_fraction_3khz\` : fraction des 20 points à moins de 3 kHz
-  de la crête dominante, avec énergie réassignée non nulle.
+Cette représentation est **l'affichage de l'annotateur**, pas l'algorithme
+de détection automatique du dépôt `bat_full_spectrum_processing`.
+Les métriques produites sont des contrastes et des écarts estimés sur
+l'image mélangée ; leur SNR local n'est pas le SNR Flattop 512 du benchmark
+de détection et ne doit pas être comparé directement aux seuils 15/35 dB.
 
-Trois étiquettes de **priorité de revue** sont attribuées uniquement pour
-aider au tri : \`strong_support_unverified\`,
-\`moderate_support_unverified\`, \`review_first\`. Elles ne constituent
-pas une validation A/B/C. Un écho, une harmonique ou un autre chirp
-peut dominer la crête réassignée et produire un faux signalement.
+L'audit charge un court extrait autour de chaque trajectoire manuelle et
+échantillonne 20 points. Il estime le bruit sur les colonnes hors du chirp,
+puis mesure le contraste local et l'écart fréquentiel à la crête dominante
+dans une bande de ±12 kHz. Les valeurs produites sont :
 
-## Première exécution Windows
+- `snr_median_db`, `snr_max_db`, `snr_p10_db` :
+  contraste local en dB de la représentation mixte ;
+- `ridge_offset_median_khz`, `ridge_offset_p90_khz` ;
+- `support_fraction_3khz` : fraction des 20 points
+  situés à ±3 kHz de la crête locale dominante.
+
+Les étiquettes `strong_support_unverified`,
+`moderate_support_unverified` et
+`review_first` ne sont que des priorités de **revue
+humaine** : une harmonique, un écho ou une autre chauve-souris peuvent
+décaler le maximum spectral.
+
+## Exécution Windows — pilote 10 chirps
+
+Depuis la racine de Bat-Chirp-Laboratory :
 
 ~~~powershell
 git pull origin main
 python -m pip install -r requirements.txt
-python tools/audit_acoustic.py --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" --output "C:\Users\damien\Documents\Python\Python-data\acoustic-v1" --processing-root "C:\Users\damien\Documents\Python\Python-Toolbox\bat_full_spectrum_processing" --max-chirps 10
+python tools/audit_acoustic.py `
+  --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" `
+  --output "C:\Users\damien\Documents\Python\Python-data\acoustic-blend-v1" `
+  --analyser-root "C:\Users\damien\Documents\Python\Python-Toolbox\Bat-Acoustic-Analyser" `
+  --reassignment-percent 35 `
+  --fft-size 1024 `
+  --overlap 0.75 `
+  --spectral-alpha 0 `
+  --max-chirps 10
 ~~~
 
-Le paramètre \`--processing-root\` doit désigner un clone réel du dépôt ;
-adapter le chemin si nécessaire. Après vérification du pilote de 10 chirps,
-supprimer \`--max-chirps 10\` pour analyser toute la calibration.
+Le paramètre `--analyser-root` est facultatif si le dépôt
+Bat-Acoustic-Analyser est dans le dossier voisin de Bat-Chirp-Laboratory.
+Comparer ses propres réglages dans l'interface avant une grande campagne.
+Un recouvrement de 87,5 % se spécifie avec `--overlap 0.875`.
 
-Résultats :
-- \`acoustic_chirps.csv\` (une ligne par chirp) ;
-- \`acoustic_summary.json\` (comptage des priorités et erreurs) ;
-- \`acoustic_errors.json\` (anomalies rencontrées).
+Après le pilote, enlever `--max-chirps 10` et utiliser un
+**nouveau répertoire** de sortie pour la campagne complète.
 
-Le jeu de test est **toujours exclu**, sans option pour l'activer.
-Aucune annotation ne sera supprimée ou corrigée automatiquement.
+## Rapports
+
+- `acoustic_chirps.csv` : indicateurs par trajectoire ;
+- `acoustic_summary.json` : paramètres exacts du calcul,
+  scores de priorité de revue et nombre d'erreurs ;
+- `acoustic_errors.json` : anomalies éventuelles.
+
+Seules les annotations `source="manual"` et
+`status="validated"` de **calibration** sont évaluées.
+Le test indépendant n'est jamais ouvert. L'audit ne modifie aucun fichier
+du corpus et ne certifie pas la justesse acoustique des annotations.
