@@ -150,6 +150,25 @@ référencé dans le manifeste, avec sauvegarde de la version précédente.
 Le test indépendant reste verrouillé. Voir
 [la procédure de mise à jour](docs/ACTUALISER_CORPUS.md).
 
+### Synchronisation en lot depuis la revue QA
+
+Après correction de chirps manuels dans **Bat-Acoustic-Analyser**, utiliser le
+bouton **« Synchroniser le corpus… »** de la fenêtre de contrôle qualité.
+Il prévisualise les JSON de calibration modifiés puis actualise uniquement les
+sessions concernées, sans modifier les WAV ni le split calibration/test.
+
+Équivalent PowerShell :
+
+```powershell
+python tools/update_dataset.py --dataset "C:\\Users\\damien\\Documents\\Python\\Python-data\\dataset-v1" --all-changed --dry-run
+python tools/update_dataset.py --dataset "C:\\Users\\damien\\Documents\\Python\\Python-data\\dataset-v1" --all-changed
+```
+
+Les anciens rapports restent inchangés ; relancer audits et benchmarks
+après synchronisation. La décision `excluded` écarte les annotations
+manuelles correspondantes du benchmark sans effacer les originaux.
+Aucun chirp non annoté n'est recherché dans ce contrôle qualité.
+
 ## Audit acoustique des références (même affichage 65/35 que l'annotateur)
 
 L'outil examine le soutien spectral le long des annotations manuelles sur
