@@ -12,3 +12,7 @@ laboratory-results/
 *.WAC
 *.tmp
 .DS_Store
+
+# Local WAV/JSON corpora (may contain sensitive field data)
+dataset/
+datasets/
