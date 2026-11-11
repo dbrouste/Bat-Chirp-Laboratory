@@ -17,7 +17,7 @@ Pour activer le mode géométrique lors d'un lancement autonome de
 `bat_full_spectrum_processing`, installer ce module dans son environnement :
 
 ```powershell
-python -m pip install -e ..\\Bat-Chirp-Laboratory
+python -m pip install -e ..\Bat-Chirp-Laboratory
 ```
 
 La méthode de référence ancienne (erreurs verticales en kHz) demeure disponible
