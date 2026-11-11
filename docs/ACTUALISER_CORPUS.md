@@ -29,3 +29,49 @@ python tools/audit_annotations.py --dataset "C:\Users\damien\Documents\Python\Py
 Remarque : les annotations sont stockées par répertoire; la mise à jour
 synchronise donc **tous** les chirps de tous les WAV de ce JSON. Les
 anciens résultats de benchmark et d'audit ne sont pas réécrits.
+
+
+## Synchronisation de toutes les corrections de calibration (nouveau)
+
+Depuis Bat-Acoustic-Analyser, ouvrir **Analysis > Contrôle qualité des
+annotations manuelles**, charger l'audit puis son `manifest.csv`, et utiliser
+**Synchroniser le corpus…**. Le bouton effectue une vérification à blanc puis
+demande confirmation avant d'écrire les copies dans le dataset.
+
+Équivalent en ligne de commande :
+
+~~~powershell
+python tools/update_dataset.py --dataset "C:\\Users\\damien\\Documents\\Python\\Python-data\\dataset-v1" --all-changed --dry-run
+python tools/update_dataset.py --dataset "C:\\Users\\damien\\Documents\\Python\\Python-data\\dataset-v1" --all-changed
+~~~
+
+Pour des originaux déplacés, utiliser `--source-root "D:\\NouveauDossier"`
+avec la même racine que dans la fenêtre de revue de l'annotateur.
+
+- La commande parcourt chaque **JSON de calibration** une seule fois, même s'il
+  référence plusieurs WAV.
+- La comparaison SHA-256 repère les JSON originaux modifiés, y compris les
+  décisions de revue. Aucun chirp non annoté n'est recherché ni ajouté.
+- Les WAV d'origine et du corpus sont contrôlés et les chemins relatifs
+  distinguent les enregistrements homonymes.
+- Une vérification préliminaire de toutes les sessions précède la mise à jour ;
+  si une session échoue, l'opération n'écrit aucun fichier.
+- La partition `test` reste **strictement verrouillée** pour cette commande.
+  Le découpage des sessions ne change pas.
+- Chaque JSON modifié est copié avec sauvegarde de la version précédente sous
+  `previous_metadata/`. Les métriques et rapports déjà générés ne sont **pas**
+  réécrits : relancer audit et benchmark après synchronisation.
+
+### Décisions de revue
+
+Les métadonnées `annotation_quality` sont enregistrées sur le **chirp manuel
+validé du JSON original**, pas sur sa copie dans le dataset. Choix disponibles :
+`to_review`, `verified_correct`, `correction_needed`, `corrected`,
+`uncertain`, `excluded` (et `ignored` pour rétrocompatibilité). Le statut
+`corrected` n'est accepté que si la trajectoire source a réellement changé
+par rapport à celle du corpus audité. La date, les empreintes géométriques et
+l'historique des décisions permettent d'auditer les corrections.
+
+Les erreurs d'annotation ne sont pas automatiquement corrigées. Le statut
+`excluded` est **un avis de revue** : son exclusion effective des futurs
+benchmarks nécessitera que le lecteur du laboratoire applique ce filtre.
