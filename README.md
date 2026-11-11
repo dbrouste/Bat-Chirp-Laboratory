@@ -123,15 +123,17 @@ référencé dans le manifeste, avec sauvegarde de la version précédente.
 Le test indépendant reste verrouillé. Voir
 [la procédure de mise à jour](docs/ACTUALISER_CORPUS.md).
 
-## Audit acoustique des références (Flattop 512)
+## Audit acoustique des références (même affichage 65/35 que l'annotateur)
 
-Un outil séparé examine le soutien spectral le long des annotations manuelles
-sur **calibration uniquement**, en réutilisant la réassignation du dépôt
-`bat_full_spectrum_processing`. Il calcule les SNR relatifs, les écarts aux
-crêtes réassignées et les priorités de revue, sans suppression automatique.
+L'outil examine le soutien spectral le long des annotations manuelles sur
+**calibration uniquement**. Il réutilise directement le pipeline de rendu
+de `Bat-Acoustic-Analyser` et son mélange **65 % STFT / 35 % Reassignment**
+en amplitudes linéaires ; ce n'est pas un second algorithme de détection.
 
 ```powershell
-python tools/audit_acoustic.py --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" --output "C:\Users\damien\Documents\Python\Python-data\acoustic-v1" --max-chirps 10
+python tools/audit_acoustic.py --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" --output "C:\Users\damien\Documents\Python\Python-data\acoustic-blend-v1" --reassignment-percent 35 --max-chirps 10
 ```
 
+Les paramètres de STFT, de recouvrement et de soustraction spectrale
+sont personnalisables pour retrouver les réglages de l'interface.
 [Guide et limites de l'audit acoustique](docs/AUDIT_ACOUSTIQUE.md).
