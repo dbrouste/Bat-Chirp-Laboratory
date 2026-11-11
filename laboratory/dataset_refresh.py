@@ -84,6 +84,7 @@ def refresh_annotations(dataset: Path, wav_name: str, *,
             raise ValueError(f"WAV missing: {name}")
         if digest(source_wav) != r["wav_sha256"] or digest(dataset_wav) != r["wav_sha256"]:
             raise ValueError(f"WAV changed: {name}; rebuild a dataset instead")
+    manual_before = sum(int(r["validated_manual"]) for r in related)
     new_hash = digest(source_json)
     old_hash = digest(dataset_json)
     changed = new_hash != old_hash
@@ -95,8 +96,7 @@ def refresh_annotations(dataset: Path, wav_name: str, *,
                  automatic_proposals=str(automatic))
     result = {"wav": wav_name, "partition": selected["partition"],
               "json": str(source_json), "affected_wavs": len(related),
-              "manual_chirps_before": sum(int(r["validated_manual"]) for r in rows
-                    if r not in related),
+              "manual_chirps_before": manual_before,
               "manual_chirps_in_updated_json": sum(c[0] for c in new_counts.values()),
               "changed": changed, "dry_run": dry_run}
     # Do not rewrite files if JSON identical.
