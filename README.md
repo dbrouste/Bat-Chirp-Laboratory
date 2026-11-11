@@ -109,3 +109,16 @@ python tools/audit_annotations.py --dataset "C:\Users\damien\Documents\Python\Py
 Les résultats sont dans `chirp_quality.csv`, `quality_summary.json`
 et `audit_warnings.csv`. Par défaut, le jeu de test n'est pas analysé.
 Voir [Audit des annotations](docs/AUDIT_ANNOTATIONS.md).
+
+## Mettre à jour des annotations corrigées
+
+Le corpus existant peut être actualisé sans modifier la répartition des sessions :
+
+```powershell
+python tools/update_dataset.py --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" --wav "20250615_175727.wav"
+```
+
+Le JSON complet de la session est synchronisé depuis le répertoire d'origine
+référencé dans le manifeste, avec sauvegarde de la version précédente.
+Le test indépendant reste verrouillé. Voir
+[la procédure de mise à jour](docs/ACTUALISER_CORPUS.md).
