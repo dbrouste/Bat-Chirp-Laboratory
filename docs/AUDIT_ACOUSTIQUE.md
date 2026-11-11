@@ -18,6 +18,10 @@ du dépôt `Bat-Acoustic-Analyser`. Il ne recrée pas la fusion dans le laborato
 
 Cette représentation est **l'affichage de l'annotateur**, pas l'algorithme
 de détection automatique du dépôt `bat_full_spectrum_processing`.
+Le tracker automatique emploie aussi un ratio numérique 65/35, mais dans
+l'autre sens et après une autre transformation : 65 % d'évidence
+Reassignment et 35 % d'évidence STFT, avec contraste en dB et lissage.
+**Les deux mélanges ne sont pas équivalents.**
 Les métriques produites sont des contrastes et des écarts estimés sur
 l'image mélangée ; leur SNR local n'est pas le SNR Flattop 512 du benchmark
 de détection et ne doit pas être comparé directement aux seuils 15/35 dB.
