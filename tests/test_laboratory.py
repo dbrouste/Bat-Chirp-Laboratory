@@ -158,3 +158,19 @@ def test_spawn_workers_end_to_end_on_silent_wavs(tmp_path):
     assert report["totals"]["files_evaluated"] == 2
     assert report["totals"]["annotated"] == 0
     assert report["metadata"]["files_from_cache"] == 0
+
+
+def test_explicitly_excluded_manual_chirp_is_not_a_benchmark_reference():
+    first = {"chirp_id": 1, "source": "manual", "status": "validated",
+             "points": [{"t_ms": 1, "f_khz": 80}, {"t_ms": 2, "f_khz": 70}],
+             "annotation_quality": {"status": "excluded"}}
+    second = {"chirp_id": 2, "source": "manual", "status": "validated",
+              "points": [{"t_ms": 3, "f_khz": 70}, {"t_ms": 4, "f_khz": 60}],
+              "annotation_quality": {"status": "corrected"}}
+    unreviewed = {"chirp_id": 3, "source": "automatic", "status": "draft",
+                  "points": []}
+    original = {"a.wav": {"chirps": [first, second, unreviewed]}}
+    filtered, count = runner.remove_excluded_references(original)
+    assert count == 1
+    assert [c["chirp_id"] for c in filtered["a.wav"]["chirps"]] == [2, 3]
+    assert [c["chirp_id"] for c in original["a.wav"]["chirps"]] == [1, 2, 3]
