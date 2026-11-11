@@ -33,6 +33,7 @@ def evaluate_chirp_v2(wav_path, chirp, display_pipeline, *,
                       reassignment_percent=35, spectral_alpha=0.0,
                       max_columns=1600, samples=20, margin_ms=15,
                       radius_khz=8.0, step_khz=0.5,
+                      stft_hop_samples=32, reassignment_hop_samples=16,
                       with_plot=False):
     """Evaluate one curve and optionally return plot-ready spectrogram data."""
     t, f = points_of(chirp)
@@ -46,13 +47,37 @@ def evaluate_chirp_v2(wav_path, chirp, display_pipeline, *,
         stop=min(len(wav),int(np.ceil((t[-1]+margin_ms)*sr/1000)))
         wav.seek(start)
         audio=wav.read(stop-start,dtype="float32",always_2d=True).mean(axis=1)
+    # GUI's mixed result always uses the STFT time axis. At the old
+    # 1024/75% setting this was 256 samples (~0.67 ms at 384 kHz),
+    # irrespective of a much finer reassignment grid. Force a fine STFT
+    # grid and a matching fine reassignment hop, retaining the EXACT GUI
+    # blend implementation (including linear-magnitude mixing).
+    if (not isinstance(stft_hop_samples, int) or stft_hop_samples < 1
+            or stft_hop_samples > fft_size):
+        raise ValueError("stft_hop_samples must be in 1..fft_size")
+    if (not isinstance(reassignment_hop_samples, int)
+            or not 1 <= reassignment_hop_samples <= 512):
+        raise ValueError("reassignment_hop_samples must be in 1..512")
+    if not 0 <= overlap_fraction < 1:
+        raise ValueError("overlap_fraction must be in [0,1)")
+    requested_stft_hop = max(1, int(round(fft_size*(1-overlap_fraction))))
+    effective_stft_hop = min(stft_hop_samples, requested_stft_hop)
+    effective_overlap = 1.0 - effective_stft_hop/fft_size
+    # Explicit reassignment hop can exceed the GUI's default 1600
+    # column budget. Increase the column budget for the selected short
+    # excerpt rather than silently increasing the reassignment hop.
+    reassigned_frames = 1 + max(0, (max(len(audio),512)-512) // reassignment_hop_samples)
+    required_columns = max(max_columns, reassigned_frames)
+    if required_columns > 10000:
+        raise ValueError("excerpt too long for the selected fine hop; reduce margin or increase hop")
     representation=display_pipeline(
         lambda offset, count: audio[offset:offset+count],
         len(audio), sr, start_time=start/sr,
-        fft_size=fft_size, overlap_fraction=overlap_fraction,
+        fft_size=fft_size, overlap_fraction=effective_overlap,
         reassignment_percent=reassignment_percent,
+        reassignment_hop_samples=reassignment_hop_samples,
         spectral_alpha=spectral_alpha,
-        max_columns=max_columns, representation="mixed")
+        max_columns=required_columns, representation="mixed")
     times=np.asarray(representation.times_s,dtype=float)*1000
     frequencies=np.asarray(representation.frequencies_hz,dtype=float)/1000
     db=np.asarray(representation.db,dtype=float)
@@ -101,13 +126,21 @@ def evaluate_chirp_v2(wav_path, chirp, display_pipeline, *,
     }
     if not with_plot:
         return row
-    return row, (times, frequencies, db, t, f, ridge)
+    display_metadata = {
+        "stft_hop_samples": effective_stft_hop,
+        "stft_hop_us": 1_000_000*effective_stft_hop/sr,
+        "reassignment_hop_samples": reassignment_hop_samples,
+        "reassignment_hop_us": 1_000_000*reassignment_hop_samples/sr,
+        "stft_columns": len(times),
+        "max_columns": required_columns,
+    }
+    return row, (times, frequencies, db, t, f, ridge, display_metadata)
 
 
 def write_plot(path, info, plot_data):
     """Save a standalone review HTML using the actual blended spectrogram."""
     import plotly.graph_objects as go
-    times, freq, db, t, f, ridge=plot_data
+    times, freq, db, t, f, ridge, grid=plot_data
     low=max(float(min(f.min(),ridge["ridge_freqs_khz"].min()))-12, 0)
     high=min(float(max(f.max(),ridge["ridge_freqs_khz"].max()))+12,float(freq[-1]))
     keep=(freq>=low)&(freq<=high)
@@ -124,9 +157,14 @@ def write_plot(path, info, plot_data):
                              hovertemplate="t=%{x:.3f} ms<br>f=%{y:.2f} kHz"
                                           "<br>offset normal=%{customdata:+.2f} kHz<extra></extra>"))
     fig.update_layout(title=(f"{info['wav']} — chirp {info['chirp_id']} — "
-                             f"{info['review_priority']}"),
+                             f"{info['review_priority']}<br><sup>"
+                             f"STFT hop {grid['stft_hop_samples']} "
+                             f"({grid['stft_hop_us']:.0f} µs) · "
+                             f"Reassignment hop {grid['reassignment_hop_samples']} "
+                             f"({grid['reassignment_hop_us']:.0f} µs) · "
+                             f"{grid['stft_columns']} colonnes</sup>"),
                       xaxis_title="Temps (ms)", yaxis_title="Fréquence (kHz)",
-                      template="plotly_dark",height=520)
+                      template="plotly_dark",height=560)
     fig.update_xaxes(range=[float(t[0])-5,float(t[-1])+5])
     fig.update_yaxes(range=[low,high])
     fig.write_html(str(path),include_plotlyjs=True,full_html=True)
@@ -136,6 +174,7 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
            max_chirps=None, plot_top=10, fft_size=1024,
            overlap_fraction=0.75, reassignment_percent=35,
            spectral_alpha=0.0, max_columns=1600,
+           stft_hop_samples=32, reassignment_hop_samples=16,
            samples=20, radius_khz=8.0, step_khz=0.5):
     root=Path(dataset).resolve()
     destination=Path(output).resolve()
@@ -185,7 +224,9 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
                          overlap_fraction=overlap_fraction,
                          reassignment_percent=reassignment_percent,
                          spectral_alpha=spectral_alpha,max_columns=max_columns,
-                         samples=samples,radius_khz=radius_khz,step_khz=step_khz))
+                         samples=samples,radius_khz=radius_khz,step_khz=step_khz,
+                         stft_hop_samples=stft_hop_samples,
+                         reassignment_hop_samples=reassignment_hop_samples))
             except (OSError,ValueError,TypeError,IndexError,RuntimeError) as exc:
                 row.update(error=str(exc),review_priority="analysis_error",
                            reason="analysis_error")
@@ -236,7 +277,10 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
                         reassignment_percent=reassignment_percent,
                         spectral_alpha=spectral_alpha,max_columns=max_columns,
                         samples=samples,radius_khz=radius_khz,
-                        step_khz=step_khz,with_plot=True)
+                        step_khz=step_khz,
+                        stft_hop_samples=stft_hop_samples,
+                        reassignment_hop_samples=reassignment_hop_samples,
+                        with_plot=True)
                     safe=f"review_{len(plots)+1:03d}.html"
                     write_plot(destination/safe,lookups[match],detail)
                     plots.append({"wav":key,"chirp_id":chirp.get("chirp_id"),
@@ -250,7 +294,9 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
         "representation":"Bat-Acoustic-Analyser mixed display",
         "stft_percent":100-reassignment_percent,
         "reassignment_percent":reassignment_percent,
-        "fft_size":fft_size,"overlap_fraction":overlap_fraction,
+        "fft_size":fft_size,"overlap_fraction_minimum":overlap_fraction,
+        "stft_hop_samples_maximum":stft_hop_samples,
+        "reassignment_hop_samples":reassignment_hop_samples,
         "spectral_alpha":spectral_alpha,"samples":samples,
         "normal_radius_khz":radius_khz,"normal_step_khz":step_khz,
         "chirps_processed":len(results),
@@ -278,7 +324,12 @@ def main(argv=None):
     parser.add_argument("--max-chirps",type=int)
     parser.add_argument("--plot-top",type=int,default=10)
     parser.add_argument("--fft-size",type=int,default=1024)
-    parser.add_argument("--overlap",type=float,default=0.75)
+    parser.add_argument("--overlap",type=float,default=0.75,
+                        help="Minimum STFT overlap; fine hop is additionally enforced")
+    parser.add_argument("--stft-hop",type=int,default=32,
+                        help="Maximum STFT hop in samples (default 32)")
+    parser.add_argument("--reassignment-hop",type=int,default=16,
+                        help="Explicit reassignment hop in samples (default 16)")
     parser.add_argument("--reassignment-percent",type=int,default=35)
     parser.add_argument("--spectral-alpha",type=float,default=0.0)
     parser.add_argument("--max-columns",type=int,default=1600)
@@ -291,7 +342,9 @@ def main(argv=None):
                       fft_size=args.fft_size,overlap_fraction=args.overlap,
                       reassignment_percent=args.reassignment_percent,
                       spectral_alpha=args.spectral_alpha,max_columns=args.max_columns,
-                      radius_khz=args.normal_radius_khz,step_khz=args.normal_step_khz)
+                      radius_khz=args.normal_radius_khz,step_khz=args.normal_step_khz,
+                      stft_hop_samples=args.stft_hop,
+                      reassignment_hop_samples=args.reassignment_hop)
     except (OSError,ValueError,ImportError) as exc:
         parser.exit(2,f"Error: {exc}\n")
     print(json.dumps(result,indent=2,ensure_ascii=False))
