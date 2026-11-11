@@ -1,8 +1,9 @@
 """Continuous ridge search across normals to a manually annotated chirp.
 
-Coordinates are normalized: u = (t_ms - t0_ms) * time_scale_khz_per_ms,
-v = f_khz. Normals are Euclidean in (u,v); signed distances are in kHz
-of the normalized coordinate system, not pure vertical frequency differences.
+Coordinates are calibrated from the manual chirp's complete time and frequency
+extents: u = (t_ms-t0_ms) * (frequency_span_khz/time_span_ms), v = f_khz.
+Normals and signed lengths are Euclidean in (u,v), expressed as geometric
+kHz equivalents, independent of the display zoom or candidate ridge.
 No automatic detector is used and manual annotation is never modified.
 """
 from __future__ import annotations
@@ -38,6 +39,35 @@ def sample_bilinear(times_ms, freqs_khz, db, query_t, query_f):
     return out.reshape(qt.shape)
 
 
+def square_time_scale(annotation_t_ms, annotation_f_khz, *,
+                      near_horizontal_limit_khz_per_ms=1.0,
+                      fallback_khz_per_ms=10.0):
+    """One fixed square time-frequency calibration for a manual chirp.
+
+    The scale uses the entire manual annotation's bounding spans; it is
+    independent of annotation point density, local slopes, detected peaks
+    and user interface zoom. Horizontal/near-horizontal chirps use an
+    explicit degenerate-case fallback rather than a zero time scale.
+    """
+    t = np.asarray(annotation_t_ms, dtype=float)
+    f = np.asarray(annotation_f_khz, dtype=float)
+    if (t.ndim != 1 or f.ndim != 1 or len(t) < 2
+            or t.shape != f.shape or not np.all(np.isfinite(t))
+            or not np.all(np.isfinite(f)) or np.any(np.diff(t) <= 0)):
+        raise ValueError("invalid manual chirp for square calibration")
+    if (not np.isfinite(near_horizontal_limit_khz_per_ms)
+            or near_horizontal_limit_khz_per_ms <= 0
+            or not np.isfinite(fallback_khz_per_ms)
+            or fallback_khz_per_ms <= 0):
+        raise ValueError("invalid square calibration fallback")
+    scale = float(np.ptp(f) / (t[-1] - t[0]))
+    if not np.isfinite(scale):
+        raise ValueError("invalid square calibration time scale")
+    if scale < near_horizontal_limit_khz_per_ms:
+        return float(fallback_khz_per_ms), "near_horizontal_fallback"
+    return scale, "square"
+
+
 def continuous_normal_ridge(times_ms, freqs_khz, db,
                             annotation_t_ms, annotation_f_khz,
                             *, count=20, radius_khz=8.0, step_khz=0.5,
@@ -71,11 +101,9 @@ def continuous_normal_ridge(times_ms, freqs_khz, db,
     local_slopes = np.diff(f) / np.diff(t)
     segment = np.clip(np.searchsorted(t[1:], sample_t, side="right"), 0, len(local_slopes)-1)
     slope = local_slopes[segment]
-    # Robust conversion of ms into the same scale as kHz; clamps extremely
-    # steep/flat traces so normal samples stay meaningful and local.
-    nonzero = np.abs(local_slopes[np.isfinite(local_slopes)])
-    scale = float(np.median(nonzero)) if len(nonzero) else 1.0
-    scale = float(np.clip(scale, 1.0, 100.0))
+    # Calibrate the complete manual chirp ONCE, not from each local slope
+    # or from the display zoom. Steep chirps are not clipped.
+    scale, normalization_mode = square_time_scale(t, f)
     # Normal of tangent (scale,slope) in normalized (u,f) space.
     normal_u = -slope / np.hypot(scale, slope)
     normal_f = scale / np.hypot(scale, slope)
@@ -129,16 +157,26 @@ def continuous_normal_ridge(times_ms, freqs_khz, db,
     return {
         "reference_times_ms": sample_t, "reference_freqs_khz": sample_f,
         "ridge_times_ms": ridge_t, "ridge_freqs_khz": ridge_f,
-        "signed_normal_khz": signed_normal,
+        "signed_normal_khz": signed_normal,  # legacy: geometric kHz_eq
+        "signed_normal_khz_eq": signed_normal,
         "signed_frequency_khz": signed_frequency,
         "median_signed_normal_khz": float(np.median(signed_normal)),
         "median_abs_normal_khz": float(np.median(np.abs(signed_normal))),
         "p90_abs_normal_khz": float(np.percentile(np.abs(signed_normal),90)),
+        "median_signed_normal_khz_eq": float(np.median(signed_normal)),
+        "median_abs_normal_khz_eq": float(np.median(np.abs(signed_normal))),
+        "p90_abs_normal_khz_eq": float(np.percentile(np.abs(signed_normal),90)),
         "median_signed_frequency_khz": float(np.median(signed_frequency)),
         "support_fraction_3khz": float(np.mean(support)),
+        "support_fraction_3khz_eq": float(np.mean(support)),
         "samples_evaluated": count, "time_scale_khz_per_ms": scale,
+        "normalization_mode": normalization_mode,
+        "manual_time_span_ms": float(t[-1] - t[0]),
+        "manual_frequency_span_khz": float(np.ptp(f)),
         "normal_radius_khz": radius_khz, "normal_step_khz": step_khz,
         "path_score": float(scores[-1].max()/count),
         "profiles_db": profiles_db,
-        "normal_offsets_khz": offsets,
+        "normal_offsets_khz": offsets,  # legacy: geometric kHz_eq
+        "normal_offsets_khz_eq": offsets,
+        "normal_u": normal_u, "normal_f": normal_f,
     }

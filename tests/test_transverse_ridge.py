@@ -7,7 +7,9 @@ import wave
 import numpy as np
 import pytest
 
-from laboratory.transverse_ridge import continuous_normal_ridge, sample_bilinear
+from laboratory.transverse_ridge import (
+    continuous_normal_ridge, sample_bilinear, square_time_scale,
+)
 from laboratory.acoustic_audit_v2 import evaluate_chirp_v2, run_v2
 
 
@@ -63,6 +65,57 @@ def test_zero_offset_and_invalid_profile():
     assert abs(result["median_signed_normal_khz"])<=1
     with pytest.raises(ValueError,match="outside spectrogram"):
         continuous_normal_ridge(times,freq,db,[70,75],[70,60])
+
+
+@pytest.mark.parametrize("slope", [0.0, -1.0, -10.0, -25.0])
+def test_equal_normal_distance_for_all_chirp_orientations(slope):
+    """A +3 kHz_eq ridge must score +3 irrespective of the chirp slope."""
+    times = np.linspace(16, 28, 601)
+    freqs = np.linspace(20, 170, 751)
+    time, frequency = np.meshgrid(times, freqs)
+    manual_t = np.array([20.0, 24.0])
+    manual_f = 135.0 + slope * (manual_t - 20.0)
+    scale, mode = square_time_scale(manual_t, manual_f)
+    # Signed distance from the line in the scaled (u, f) plane.
+    distance = (frequency - (135.0 + slope * (time - 20.0))) * (
+        scale / np.hypot(scale, slope))
+    db = 40 * np.exp(-0.5 * ((distance - 3.0) / 0.35) ** 2)
+    db *= np.exp(-0.5 * ((time - 22.0) / 2.0) ** 8)
+    result = continuous_normal_ridge(
+        times, freqs, db, manual_t, manual_f,
+        count=20, radius_khz=7, step_khz=0.25)
+    assert result["time_scale_khz_per_ms"] == pytest.approx(scale)
+    assert result["normalization_mode"] == mode
+    assert result["median_signed_normal_khz_eq"] == pytest.approx(3, abs=0.5)
+    du = (result["ridge_times_ms"] - result["reference_times_ms"]) * scale
+    df = result["ridge_freqs_khz"] - result["reference_freqs_khz"]
+    assert np.allclose(np.hypot(du, df),
+                       np.abs(result["signed_normal_khz_eq"]), atol=1e-9)
+    if slope == 0:
+        assert np.allclose(result["ridge_times_ms"],
+                           result["reference_times_ms"])
+        assert np.allclose(result["signed_frequency_khz"],
+                           result["signed_normal_khz_eq"])
+
+
+def test_square_calibration_uses_full_curve_not_median_segment_slope():
+    t = [20, 21, 22, 24]
+    f = [100, 70, 75, 80]
+    assert square_time_scale(t, f) == (7.5, "square")
+    # Extra vertices do not alter the overall extent.
+    assert square_time_scale([20, 20.5, 21, 21.5, 22, 24],
+                             [100, 85, 70, 72.5, 75, 80]) == (7.5, "square")
+
+
+def test_near_horizontal_fallback_and_no_steep_slope_cap():
+    assert square_time_scale([20, 24], [80, 80]) == (
+        10.0, "near_horizontal_fallback")
+    assert square_time_scale([20, 24], [80, 81]) == (
+        10.0, "near_horizontal_fallback")
+    assert square_time_scale([20, 20.5], [150, 50]) == (
+        200.0, "square")
+    with pytest.raises(ValueError, match="invalid manual chirp"):
+        square_time_scale([20, 20], [80, 70])
 
 
 def make_wav(path):

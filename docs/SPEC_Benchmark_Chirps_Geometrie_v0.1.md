@@ -86,39 +86,39 @@ Ces fonctions sont continues entre les seuils. Les valeurs 3 et 5 kHz viennent d
 
 **Attention aux unités :** les 3–5 kHz représentent une tolérance fréquentielle de référence. Le calcul géométrique emploie une distance **perpendiculaire dans le repère normalisé**, qui doit être convertie explicitement (§ 5.3) ; on ne peut pas comparer directement ces deux grandeurs.
 
-## 4. Normalisation à −45°
+## 4. Normalisation à échelle carrée (décision du 12/11/2026)
 
-### 4.1 Estimation de la pente principale
+### 4.1 Échelle unique issue de l'annotation manuelle
 
-Sur la trajectoire **manuelle uniquement**, estimer la pente principale \(m\) de la relation \(f(t)\) en kHz/ms. Méthode proposée : régression robuste (par exemple Theil–Sen) sur des échantillons répartis régulièrement en distance curviligne.
+Calculer \\(T=t_\\mathrm{fin}-t_\\mathrm{début}\\) et
+\\(F=\\max(f)-\\min(f)\\) sur toute l'annotation **manuelle**.
+Fixer \\(k=F/T\\) (kHz/ms), une seule fois pour chaque chirp.
+Pour un chirp monotone, le rectangle de ses étendues devient un carré
+dans le repère normalisé. Un chirp avec knee conserve les tangentes
+locales, mais **ne change jamais d'échelle** selon les segments.
 
-La pente est globale : **elle sert au calibrage des axes**, pas aux perpendiculaires de mesure, qui utilisent les tangentes locales.
+### 4.2 Mesure perpendiculaire
 
-### 4.2 Changement de repère
+\\[
+X=k(t-t_0),\\qquad Y=f-f_0.
+\\]
 
-Pour \(m<0\), choisir un point origine manuel \((t_0,f_0)\) et poser :
+Une longueur sur la normale vaut \\(d\\) kHz équivalents, quelle que
+soit sa direction. Une horizontale conserve exactement
+\\(|d|=|\\Delta f|\\) ; le chirp monotone rectiligne devient
++45° ou −45° selon le sens fréquentiel.
 
-\[
-X=|m|(t-t_0),\qquad Y=f-f_0.
-\]
+Appliquer la même transformation à la courbe automatique :
+pas de réétalonnage sur l'automatique, la tangente locale ni sur le zoom.
+**Ne pas multiplier la distance par \\(\\sqrt{2}\\)** ; calibrer
+les tolérances sur les distances géométriques `kHz_eq`.
 
-Ainsi, la pente principale devient \(dY/dX=-1\), soit **−45°**. Les deux coordonnées s'expriment en **kHz équivalents**.
+### 4.3 Cas presque horizontal
 
-Appliquer **exactement la même transformation** à tous les points automatiques candidats. Ne jamais recalibrer les axes selon leur pente : cela gommerait une erreur réelle de l'algorithme.
-
-Pour un chirp ascendant, on peut inverser le signe de \(Y\) pour obtenir aussi −45° :
-
-\[
-Y=-\operatorname{sign}(m)(f-f_0).
-\]
-
-Cette généralisation conserve les distances, mais le rapport doit signaler le chirp ascendant.
-
-### 4.3 Cas dégénérés
-
-Une pente presque nulle ne permet pas de rendre le chirp à −45° par un simple changement d'échelle sans amplifier excessivement le temps. **Choix proposé :** si \(|m|<1\) kHz/ms ou si la régression est instable, appliquer une échelle de repli configurable (par exemple 10 kHz/ms), marquer « normalisation dégradée » et **ne pas prétendre que la pente est −45°**.
-
-Ce cas est à tester sur les chirps presque horizontaux et les trajectoires très courbées.
+Quand \\(F/T<1\\) kHz/ms, utiliser provisoirement \\(k=10\\)
+kHz/ms et signaler `near_horizontal_fallback`. Pour une horizontale
+parfaite, la normale reste verticale et la distance égale l'écart
+fréquentiel. Aucune limite supérieure n'est imposée à une pente forte.
 
 ## 5. Mesure sur 20 perpendiculaires
 
@@ -156,13 +156,11 @@ d_i = (A_i-M_i)\cdot n_i
 
 Sur une portion dont la tangente vaut −45°, un décalage **vertical** de \(\Delta f\) produit \(|d_i|=|\Delta f|/\sqrt{2}\).
 
-Pour conserver le sens de notre tolérance de référence :
-
-\[
-e_i=\sqrt{2}|d_i|,\qquad T_\perp(s)=T_f(s)/\sqrt{2}.
-\]
-
-Il est donc équivalent de comparer \(|d_i|\) à \(T_\perp\), ou \(e_i\) à \(T_f\). **La grandeur \(e_i\) est un écart géométrique en « kHz équivalents », pas nécessairement un écart fréquentiel à temps identique**, surtout près d'un knee.
+La tolérance \\(T_\\perp(s)\\) doit être **calibrée directement en
+kHz équivalents** sur le corpus de calibration ; les anciens seuils
+de distance verticale ne se convertissent pas mécaniquement en distances
+normales par un facteur \\(\\sqrt{2}\\). L'égalité des longueurs dans
+le carré prime sur l'orientation du chirp.
 
 Conserver par point : temps manuel, fréquence manuelle, position dans la courbe, distance signée, distance absolue, intersection automatique, statut couvert/non couvert.
 

@@ -11,12 +11,18 @@ indépendant du détecteur, mais sa surface est celle de l'annotateur.
 
 1. Échantillonner 20 positions entre les deux extrémités de l'annotation,
    par interpolation **linéaire** des points manuels.
-2. Normaliser l'axe temporel en unités comparables à la fréquence :
-   u = (t_ms - t0_ms) × k, avec k = médiane des |pentes locales|, bornée
-   à 1–100 kHz/ms. La normale est calculée dans le plan (u, f_kHz).
+2. Calibrer le repère carré sur **l'annotation manuelle seule** :
+   `u = (t_ms - t0_ms) * k`, avec
+   `k = (max(f_khz)-min(f_khz))/(t_fin_ms-t_debut_ms)`.
+   Cette échelle unique transforme une distance horizontale (ms) en
+   **kHz équivalents géométriques** (`kHz_eq`).
+   Elle est indépendante du zoom, du nombre de sommets et du ridge.
+   Une pente très forte n'est pas plafonnée. Si k < 1 kHz/ms, utiliser
+   k = 10 kHz/ms avec `normalization_mode=near_horizontal_fallback`
+   (chirp horizontal ou carré dégénéré).
 3. À chaque position, interroger par interpolation bilinéaire l'image
    STFT/Reassignment le long de la normale, de -8 à +8 unités normalisées
-   par pas de 0,5. Une valeur positive est orientée vers les
+   par pas de 0,5 kHz_eq. Une valeur positive est orientée vers les
    **fréquences supérieures**.
 4. Chercher une **suite continue** de crêtes par programmation dynamique.
    Récompenser le contraste à un bruit estimé hors du chirp, pénaliser
@@ -29,11 +35,16 @@ indépendant du détecteur, mais sa surface est celle de l'annotateur.
    montrant spectrogramme (mélange 65/35), annotation manuelle et crête
    continue pour les cas prioritaires.
 
-**Important :** un « écart normal » n'est pas un écart vertical en kHz.
-Il est mesuré dans le repère normalisé (u, f_kHz). Une autre colonne
-contient la différence fréquentielle signée, qui dépend aussi de la
-déviation temporelle de la normale. Le signe positif signifie que
-la crête calculée est **au-dessus de l'annotation en fréquence**.
+**Important :** l'écart perpendiculaire est euclidien dans le repère carré
+`(u, f_khz)`, exprimé en `kHz_eq`, pas en écart vertical de fréquence.
+Une courbe horizontale conserve donc son écart en kHz, alors que les
+obliques/quasi verticales utilisent la même unité de longueur.
+`median_signed_frequency_khz` conserve la différence fréquentielle
+distincte. Un offset normal positif pointe vers les fréquences supérieures.
+Les anciens champs `*_normal_khz` restent disponibles pour les scripts
+existants, mais représentent des `kHz_eq`; les sorties V3 comportent aussi
+des champs `*_normal_khz_eq` et `normalization_mode`. Il faut recalibrer
+les seuils de revue avant de comparer l'ancien et le nouveau classement.
 
 ## Résolution temporelle de l'image mixte (correctif)
 

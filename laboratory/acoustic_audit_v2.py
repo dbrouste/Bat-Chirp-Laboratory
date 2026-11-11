@@ -24,7 +24,10 @@ FIELDS = (
     "median_signed_normal_khz", "median_abs_normal_khz",
     "p90_abs_normal_khz", "median_signed_frequency_khz",
     "support_fraction_3khz", "display_contrast_median_db",
-    "time_scale_khz_per_ms", "review_priority", "reason", "error",
+    "time_scale_khz_per_ms", "normalization_mode",
+    "median_signed_normal_khz_eq", "median_abs_normal_khz_eq",
+    "p90_abs_normal_khz_eq", "support_fraction_3khz_eq",
+    "review_priority", "reason", "error",
 )
 
 
@@ -119,7 +122,12 @@ def evaluate_chirp_v2(wav_path, chirp, display_pipeline, *,
         "median_signed_frequency_khz":round(ridge["median_signed_frequency_khz"],3),
         "support_fraction_3khz":round(support,3),
         "display_contrast_median_db":round(contrast,2),
-        "time_scale_khz_per_ms":round(ridge["time_scale_khz_per_ms"],3),
+        "time_scale_khz_per_ms":round(ridge["time_scale_khz_per_ms"],6),
+        "normalization_mode":ridge["normalization_mode"],
+        "median_signed_normal_khz_eq":round(ridge["median_signed_normal_khz_eq"],3),
+        "median_abs_normal_khz_eq":round(ridge["median_abs_normal_khz_eq"],3),
+        "p90_abs_normal_khz_eq":round(ridge["p90_abs_normal_khz_eq"],3),
+        "support_fraction_3khz_eq":round(ridge["support_fraction_3khz_eq"],3),
         "review_priority":priority,
         "reason":";".join(reasons),
         "error":"",
@@ -148,7 +156,7 @@ def write_plot(path, info, plot_data, *, detail="both"):
     show_profiles = detail != "overlay"
     rows = int(show_overlay) + int(show_profiles)
     titles = (["Spectrogramme mixte + trajectoires"] if show_overlay else [])
-    titles += (["Profils perpendiculaires : intensité et chemin retenu"]
+    titles += (["Profils perpendiculaires : intensité et chemin retenu (kHz_eq)"]
                if show_profiles else [])
     fig = make_subplots(rows=rows, cols=1, subplot_titles=titles,
                         vertical_spacing=0.11 if rows == 2 else 0.05)
@@ -171,7 +179,7 @@ def write_plot(path, info, plot_data, *, detail="both"):
             line=dict(color="lime",width=2),
             customdata=np.asarray(ridge["signed_normal_khz"]),
             hovertemplate="t=%{x:.3f} ms<br>f=%{y:.2f} kHz"
-                          "<br>écart normal=%{customdata:+.2f}<extra></extra>"),
+                          "<br>écart normal=%{customdata:+.2f} kHz_eq<extra></extra>"),
             row=1,col=1)
         fig.update_xaxes(range=[float(t[0])-5,float(t[-1])+5],
                          title_text="Temps (ms)",row=1,col=1)
@@ -196,13 +204,13 @@ def write_plot(path, info, plot_data, *, detail="both"):
             x=ridge["reference_times_ms"],y=ridge["signed_normal_khz"],
             mode="lines+markers",name="Chemin retenu (écart signé)",
             line=dict(color="white",width=2),
-            hovertemplate="t=%{x:.3f} ms<br>écart normal=%{y:+.2f}<extra></extra>"),
+            hovertemplate="t=%{x:.3f} ms<br>écart normal=%{y:+.2f} kHz_eq<extra></extra>"),
             row=row_index,col=1)
         fig.add_hline(y=0,line_color="cyan",line_dash="dash",
                       row=row_index,col=1)
         fig.update_xaxes(title_text="Temps de référence (ms)",
                          row=row_index,col=1)
-        fig.update_yaxes(title_text="Écart normal signé (unités normalisées)",
+        fig.update_yaxes(title_text="Écart normal signé (kHz_eq)",
                          row=row_index,col=1)
     fig.update_layout(
         title=(f"{info['wav']} — chirp {info['chirp_id']} — "
@@ -416,7 +424,7 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
         sum(r["opposite_direction_recovered"] for r in evaluated_shifts)
         / len(evaluated_shifts) if evaluated_shifts else None)
     summary={
-        "version":"continuous_normals_v2",
+        "version":"continuous_normals_square_v3",
         "partition":"calibration",
         "representation":"Bat-Acoustic-Analyser mixed display",
         "stft_percent":100-reassignment_percent,
@@ -436,9 +444,12 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
         "plots":plots,
         "shift_validation_runs":len(shift_rows),
         "shift_validation_detection_rate":shift_detection_rate,
-        "note":"Signed normal offsets are in normalized (scaled time,frequency) geometry; "
-               "positive means the ridge is above the manual annotation in frequency. "
-               "Thresholds are provisional; no automatic rejection.",
+        "normalization":"square from the manual frequency and time spans; "
+                        "10 kHz/ms fallback if F/T < 1; independent of GUI zoom",
+        "note":"Normal distances and thresholds are in geometric kHz_eq, "
+               "not vertical frequency differences. Legacy *_normal_khz "
+               "fields also mean kHz_eq. Historical scores are not directly "
+               "comparable; thresholds remain provisional.",
     }
     (destination/"acoustic_summary_v2.json").write_text(
         json.dumps(summary,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
