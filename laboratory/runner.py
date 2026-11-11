@@ -195,6 +195,16 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
             processing_root / "benchmark" / "reassignment_detector_seeds.py").is_file():
         raise ValueError("--processing-root must point to a checkout of "
                          "bat_full_spectrum_processing with the SNR benchmark")
+    if params["geometry_mode"] == "square_normals_v1":
+        processing_evaluator = (processing_root / "benchmark"
+                                / "reassignment_detector_seeds.py")
+        # A stale sibling checkout would reject the geometry_mode argument
+        # in each worker, silently producing a failed/incomplete experiment.
+        if "geometry_mode=" not in processing_evaluator.read_text(encoding="utf-8"):
+            raise ValueError(
+                "bat_full_spectrum_processing checkout is outdated: "
+                "run 'git pull origin main' in that repository before "
+                "enabling square_normals_v1")
     wav_dir = Path(wav_dir).resolve()
     out = Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
