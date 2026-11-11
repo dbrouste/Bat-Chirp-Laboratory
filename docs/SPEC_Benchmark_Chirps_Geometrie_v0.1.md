@@ -84,38 +84,38 @@ w(s) = 1 + 2u
 
 Ces fonctions sont continues entre les seuils. Les valeurs 3 et 5 kHz viennent des critères déjà retenus pour le benchmark ; la pondération de 1 à 3 est une proposition à vérifier.
 
-**Attention aux unités :** les 3–5 kHz représentent une tolérance fréquentielle de référence. Le calcul géométrique emploie une distance **perpendiculaire dans le repère normalisé**, qui doit être convertie explicitement (§ 5.3) ; on ne peut pas comparer directement ces deux grandeurs.
+**Attention aux unités :** les tolérances historiques de 3–5 kHz ont été définies pour des écarts fréquentiels. La nouvelle mesure perpendiculaire emploie des **kHz équivalents géométriques** dans le repère carré. Les seuils du score doivent être recalibrés directement dans cette unité (§ 5.3), sans facteur de conversion constant imposé.
 
 ## 4. Normalisation à échelle carrée (décision du 12/11/2026)
 
 ### 4.1 Échelle unique issue de l'annotation manuelle
 
-Calculer \\(T=t_\\mathrm{fin}-t_\\mathrm{début}\\) et
-\\(F=\\max(f)-\\min(f)\\) sur toute l'annotation **manuelle**.
-Fixer \\(k=F/T\\) (kHz/ms), une seule fois pour chaque chirp.
+Calculer \(T=t_\mathrm{fin}-t_\mathrm{début}\) et
+\(F=\max(f)-\min(f)\) sur toute l'annotation **manuelle**.
+Fixer \(k=F/T\) (kHz/ms), une seule fois pour chaque chirp.
 Pour un chirp monotone, le rectangle de ses étendues devient un carré
 dans le repère normalisé. Un chirp avec knee conserve les tangentes
 locales, mais **ne change jamais d'échelle** selon les segments.
 
 ### 4.2 Mesure perpendiculaire
 
-\\[
-X=k(t-t_0),\\qquad Y=f-f_0.
-\\]
+\[
+X=k(t-t_0),\qquad Y=f-f_0.
+\]
 
-Une longueur sur la normale vaut \\(d\\) kHz équivalents, quelle que
+Une longueur sur la normale vaut \(d\) kHz équivalents, quelle que
 soit sa direction. Une horizontale conserve exactement
-\\(|d|=|\\Delta f|\\) ; le chirp monotone rectiligne devient
+\(|d|=|\Delta f|\) ; le chirp monotone rectiligne devient
 +45° ou −45° selon le sens fréquentiel.
 
 Appliquer la même transformation à la courbe automatique :
 pas de réétalonnage sur l'automatique, la tangente locale ni sur le zoom.
-**Ne pas multiplier la distance par \\(\\sqrt{2}\\)** ; calibrer
+**Ne pas multiplier la distance par \(\sqrt{2}\)** ; calibrer
 les tolérances sur les distances géométriques `kHz_eq`.
 
 ### 4.3 Cas presque horizontal
 
-Quand \\(F/T<1\\) kHz/ms, utiliser provisoirement \\(k=10\\)
+Quand \(F/T<1\) kHz/ms, utiliser provisoirement \(k=10\)
 kHz/ms et signaler `near_horizontal_fallback`. Pour une horizontale
 parfaite, la normale reste verticale et la distance égale l'écart
 fréquentiel. Aucune limite supérieure n'est imposée à une pente forte.
@@ -156,10 +156,10 @@ d_i = (A_i-M_i)\cdot n_i
 
 Sur une portion dont la tangente vaut −45°, un décalage **vertical** de \(\Delta f\) produit \(|d_i|=|\Delta f|/\sqrt{2}\).
 
-La tolérance \\(T_\\perp(s)\\) doit être **calibrée directement en
+La tolérance \(T_\perp(s)\) doit être **calibrée directement en
 kHz équivalents** sur le corpus de calibration ; les anciens seuils
 de distance verticale ne se convertissent pas mécaniquement en distances
-normales par un facteur \\(\\sqrt{2}\\). L'égalité des longueurs dans
+normales par un facteur \(\sqrt{2}\). L'égalité des longueurs dans
 le carré prime sur l'orientation du chirp.
 
 Conserver par point : temps manuel, fréquence manuelle, position dans la courbe, distance signée, distance absolue, intersection automatique, statut couvert/non couvert.
