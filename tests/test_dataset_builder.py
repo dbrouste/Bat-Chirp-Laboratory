@@ -25,7 +25,7 @@ def create_session(root, name, filename="same.wav", audio=None):
     wav = directory / filename
     wav.write_bytes(audio if audio is not None else name.encode())
     annotation = directory / f"{directory.name}.json"
-    annotation.write_text(json.dumps({"files": {filename: record()}}), encoding="utf-8")
+    annotation.write_text(json.dumps({"schema_version": 1, "units": {"time": "ms", "frequency": "kHz"}, "files": {filename: record()}}), encoding="utf-8")
     return wav, annotation
 
 
@@ -57,7 +57,7 @@ def test_whole_json_is_kept_together_and_automatic_is_not_a_reference(tmp_path):
     wav, annotation = create_session(source, "night")
     extra = wav.parent / "extra.wav"
     extra.write_bytes(b"different")
-    original = {"schema_version": 1, "files": {
+    original = {"schema_version": 1, "units": {"time": "ms", "frequency": "kHz"}, "files": {
         "same.wav": record(manual=True, automatic=True),
         "extra.wav": record(manual=False, automatic=True)}}
     annotation.write_text(json.dumps(original, ensure_ascii=False, indent=4), encoding="utf-8")
@@ -105,7 +105,7 @@ def test_invalid_metadata_and_only_automatic_are_skipped(tmp_path):
     folder = root / "auto"
     folder.mkdir()
     (folder / "auto.wav").write_bytes(b"sound")
-    (folder / "auto.json").write_text(json.dumps({"files": {"auto.wav": record(False, True)}}))
+    (folder / "auto.json").write_text(json.dumps({"schema_version": 1, "units": {"time": "ms", "frequency": "kHz"}, "files": {"auto.wav": record(False, True)}}))
     (root / "invalid.json").write_text("{invalid", encoding="utf-8")
     output = tmp_path / "out"
     result = build_dataset(root, output)
@@ -139,9 +139,62 @@ def test_nested_paths_and_nonexistent_root(tmp_path):
     folder.mkdir(parents=True)
     (folder / "call.WAV").write_bytes(b"audio")
     (folder / "index.json").write_text(json.dumps({
+        "created_by": "Bat-Acoustic-Analyser",
+        "schema_version": 1,
+        "units": {"time": "ms", "frequency": "kHz"},
         "files": {"call.wav": record()}}))
     summary = build_dataset(root, tmp_path / "out")
     assert summary["wav_accepted"] == 1
     assert (tmp_path / "out/calibration/wav/site/night/call.WAV").exists()
     with pytest.raises(ValueError, match="not found"):
         build_dataset(tmp_path / "nonexistent", tmp_path / "other")
+
+def test_rejects_foreign_creator_even_with_matching_shape(tmp_path):
+    root = tmp_path / "src"
+    root.mkdir()
+    create_session(root, "good")
+    wav, annotation = create_session(root, "foreign")
+    data = json.loads(annotation.read_text(encoding="utf-8"))
+    data["created_by"] = "Other software"
+    annotation.write_text(json.dumps(data))
+    summary = build_dataset(root, tmp_path / "out")
+    assert summary["json_accepted"] == 1
+    assert "foreign created_by" in (tmp_path / "out/warnings.csv").read_text()
+
+
+def test_legacy_needs_directory_name_schema_units_and_valid_points(tmp_path):
+    root = tmp_path / "src"
+    root.mkdir()
+    create_session(root, "good")
+    _, wrong_name = create_session(root, "wrong_name")
+    wrong_name.rename(wrong_name.with_name("unrelated.json"))
+    _, bad_units = create_session(root, "bad_units")
+    doc = json.loads(bad_units.read_text())
+    doc["units"]["frequency"] = "Hz"
+    bad_units.write_text(json.dumps(doc))
+    _, bad_points = create_session(root, "bad_points")
+    doc = json.loads(bad_points.read_text())
+    doc["files"]["same.wav"]["chirps"][0]["points"] = [{"t_ms": 1, "f_khz": 60}]
+    bad_points.write_text(json.dumps(doc))
+    summary = build_dataset(root, tmp_path / "out")
+    assert summary["json_accepted"] == 1
+    assert summary["json_legacy_accepted"] == 1
+    warning_text = (tmp_path / "out/warnings.csv").read_text()
+    assert "filename differs" in warning_text
+    assert "missing/invalid units" in warning_text
+    assert "fewer than 2 points" in warning_text
+
+
+def test_tagged_json_accepted_with_nonstandard_filename(tmp_path):
+    root = tmp_path / "src"
+    root.mkdir()
+    _, annotation = create_session(root, "night")
+    doc = json.loads(annotation.read_text())
+    doc["created_by"] = "Bat-Acoustic-Analyser"
+    renamed = annotation.with_name("annotations-export.json")
+    renamed.write_text(json.dumps(doc))
+    annotation.unlink()
+    summary = build_dataset(root, tmp_path / "out")
+    assert summary["json_tagged_accepted"] == 1
+    assert summary["json_legacy_accepted"] == 0
+    assert (tmp_path / "out/calibration/annotations/night/annotations-export.json").is_file()
