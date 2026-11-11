@@ -101,9 +101,9 @@ def evaluate_chirp(wav_path: Path, chirp: dict, reassignment,
     expected = np.interp(target_times, t_ms, f_khz)
 
     snrs, offsets, supported = [], [], []
-    for ti, frequency in zip(frame_indices, expected):
+    for index, (ti, frequency) in enumerate(zip(frame_indices, expected)):
         # Refuse extrapolation outside measured STFT frames.
-        if target_times[len(snrs)] < times[0] or target_times[len(snrs)] > times[-1]:
+        if target_times[index] < times[0] or target_times[index] > times[-1]:
             raise ValueError("reference outside spectrogram grid")
         neighborhood = np.flatnonzero(abs(freqs-frequency) <= band_khz)
         center = np.flatnonzero(abs(freqs-frequency) <= 3.0)
