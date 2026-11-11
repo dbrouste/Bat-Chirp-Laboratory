@@ -84,6 +84,10 @@ def continuous_normal_ridge(times_ms, freqs_khz, db,
     candidate_f = sample_f[:, None] + normal_f[:, None] * offsets
     profiles_db = sample_bilinear(times_ms, freqs_khz, db, candidate_t, candidate_f)
     valid = np.isfinite(profiles_db)
+    # Reject fully outside profiles before computing a nanpercentile baseline.
+    # Otherwise NumPy emits RuntimeWarning: All-NaN slice encountered.
+    if np.any(~np.any(valid, axis=1)):
+        raise ValueError("normal profile outside spectrogram at one or more reference samples")
     # For local contrast we estimate per-frequency noise in the GUI blend;
     # do not use calibration detector's SNR thresholds here.
     if noise_db is not None:
@@ -96,9 +100,6 @@ def continuous_normal_ridge(times_ms, freqs_khz, db,
         evidence = profiles_db - np.nanpercentile(profiles_db, 20, axis=1)[:, None]
     evidence = np.clip(evidence, -15.0, 35.0)
     evidence[~valid] = -np.inf
-    if np.any(~np.any(valid, axis=1)):
-        raise ValueError("normal profile outside spectrogram at one or more reference samples")
-
     k = len(offsets)
     scores = np.full((count,k), -np.inf)
     back = np.zeros((count,k), dtype=np.int32)
