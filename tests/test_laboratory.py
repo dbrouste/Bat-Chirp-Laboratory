@@ -79,7 +79,7 @@ def test_runner_caches_results_without_changing_manual_json(tmp_path, monkeypatc
     (external / "benchmark").mkdir()
     (external / "bat_analysis" / "detection.py").write_text("# placeholder\n")
     (external / "benchmark" / "reassignment_detector_seeds.py").write_text(
-        "# placeholder\n")
+        "def evaluate(*args, geometry_mode=None, **kwargs): pass\n")
     invoked = []
 
     def fake_worker(name, record, wav_dir, options, processing_root):
