@@ -26,24 +26,27 @@ def create_wav(path, sr=384000):
         handle.writeframes(pcm.tobytes())
 
 
-def fake_reassignment(y,sr,**kwargs):
-    n_fft=kwargs["n_fft"]
-    hop=kwargs["hop"]
-    freq=np.fft.rfftfreq(n_fft,1/sr)
-    selected=(freq>=kwargs["fmin"])&(freq<=kwargs["fmax"])
-    freq=freq[selected]
-    times=(np.arange(0,len(y)-n_fft+1,hop)+(n_fft-1)/2)/sr
-    power=np.ones((len(freq),len(times)))
-    center=np.argmin(abs(freq-70000))
-    power[center,:]=10000
-    return {"freqs_hz":freq,"times_s":times,
-            "reassigned_power":power,"stft_power":power}
+def fake_display(reader, frames, sr, **kwargs):
+    from types import SimpleNamespace
+    assert kwargs["representation"] == "mixed"
+    assert kwargs["reassignment_percent"] == 35
+    assert kwargs["fft_size"] == 1024
+    assert kwargs["overlap_fraction"] == 0.75
+    assert kwargs["spectral_alpha"] == 0.0
+    assert reader(0, 10).shape == (10,)
+    freq = np.fft.rfftfreq(kwargs["fft_size"], 1/sr)
+    times = kwargs["start_time"] + np.linspace(.002, frames/sr-.002, 150)
+    # Synthetic ridge with high amplitude at ~70 kHz, constant over time:
+    # suitable for verifying sampling and axes (not a physical SNR).
+    db = np.zeros((len(freq), len(times)), dtype=np.float32)
+    db[np.argmin(abs(freq-70000)), :] = 40.0
+    return SimpleNamespace(frequencies_hz=freq, times_s=times, db=db)
 
 
 def test_evaluate_chirp_returns_finite_metrics(tmp_path):
     wav=tmp_path/"test.wav"
     create_wav(wav)
-    row=evaluate_chirp(wav,chirp(),fake_reassignment)
+    row=evaluate_chirp(wav,chirp(),fake_display)
     assert row["samples_evaluated"]==20
     assert np.isfinite(row["snr_median_db"])
     assert 0<=row["support_fraction_3khz"]<=1
@@ -54,7 +57,7 @@ def test_invalid_points_rejected(tmp_path):
     create_wav(wav)
     with pytest.raises(ValueError,match="duplicate"):
         evaluate_chirp(wav,chirp([{"t_ms":20,"f_khz":80},
-                                  {"t_ms":20,"f_khz":60}]),fake_reassignment)
+                                  {"t_ms":20,"f_khz":60}]),fake_display)
 
 
 def test_run_reads_only_calibration(tmp_path,monkeypatch):
@@ -74,11 +77,35 @@ def test_run_reads_only_calibration(tmp_path,monkeypatch):
         writer=csv.DictWriter(stream,fieldnames=manifest[0].keys())
         writer.writeheader()
         writer.writerows(manifest)
-    monkeypatch.setattr(audit,"load_reassignment",lambda _:fake_reassignment)
+    monkeypatch.setattr(audit,"load_display_pipeline",lambda _:fake_display)
     summary=run(root,tmp_path/"results")
     assert summary["chirps_processed"]==1
     assert summary["partition"]=="calibration"
+    assert summary["reassignment_percent"]==35
+    assert summary["stft_percent"]==65
+    assert summary["representation"]=="Bat-Acoustic-Analyser mixed display"
     assert summary["errors"]==0
     with (tmp_path/"results"/"acoustic_chirps.csv").open(encoding="utf-8-sig") as file:
         records=list(csv.DictReader(file))
     assert len(records)==1 and records[0]["partition"]=="calibration"
+
+
+def test_rejects_invalid_blend_settings(tmp_path):
+    wav=tmp_path/"test.wav"
+    create_wav(wav)
+    with pytest.raises(ValueError,match="reassignment_percent"):
+        evaluate_chirp(wav,chirp(),fake_display,reassignment_percent=110)
+
+
+def test_real_gui_pipeline_is_importable_when_checkout_available(tmp_path):
+    from pathlib import Path
+    from laboratory.acoustic_audit import load_display_pipeline
+    root=Path(__file__).resolve().parents[2]/"Bat-Acoustic-Analyser"
+    if not (root/"bat_analyser"/"spectrogram_pipeline.py").is_file():
+        pytest.skip("Real Bat-Acoustic-Analyser checkout not installed alongside laboratory")
+    wav=tmp_path/"test.wav"
+    create_wav(wav)
+    pipeline=load_display_pipeline(root)
+    row=evaluate_chirp(wav,chirp(),pipeline)
+    assert row["samples_evaluated"]==20
+    assert 0<=row["support_fraction_3khz"]<=1
