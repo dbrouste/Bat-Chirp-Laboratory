@@ -137,41 +137,90 @@ def evaluate_chirp_v2(wav_path, chirp, display_pipeline, *,
     return row, (times, frequencies, db, t, f, ridge, display_metadata)
 
 
-def write_plot(path, info, plot_data):
-    """Save a standalone review HTML using the actual blended spectrogram."""
+def write_plot(path, info, plot_data, *, detail="both"):
+    """Interactive stand-alone GUI-blend spectrogram and/or normal profiles."""
     import plotly.graph_objects as go
-    times, freq, db, t, f, ridge, grid=plot_data
-    low=max(float(min(f.min(),ridge["ridge_freqs_khz"].min()))-12, 0)
-    high=min(float(max(f.max(),ridge["ridge_freqs_khz"].max()))+12,float(freq[-1]))
-    keep=(freq>=low)&(freq<=high)
-    fig=go.Figure()
-    fig.add_trace(go.Heatmap(x=times,y=freq[keep],z=db[keep,:],
-                             colorscale="Magma",colorbar=dict(title="dB"),
-                             name="STFT 65% + Reassignment 35%"))
-    fig.add_trace(go.Scatter(x=t,y=f,mode="lines+markers",
-                             name="Annotation manuelle",line=dict(color="cyan",width=2)))
-    fig.add_trace(go.Scatter(x=ridge["ridge_times_ms"],y=ridge["ridge_freqs_khz"],
-                             mode="lines+markers",name="Crête continue (normales)",
-                             line=dict(color="lime",width=2),
-                             customdata=np.asarray(ridge["signed_normal_khz"]),
-                             hovertemplate="t=%{x:.3f} ms<br>f=%{y:.2f} kHz"
-                                          "<br>offset normal=%{customdata:+.2f} kHz<extra></extra>"))
-    fig.update_layout(title=(f"{info['wav']} — chirp {info['chirp_id']} — "
-                             f"{info['review_priority']}<br><sup>"
-                             f"STFT hop {grid['stft_hop_samples']} "
-                             f"({grid['stft_hop_us']:.0f} µs) · "
-                             f"Reassignment hop {grid['reassignment_hop_samples']} "
-                             f"({grid['reassignment_hop_us']:.0f} µs) · "
-                             f"{grid['stft_columns']} colonnes</sup>"),
-                      xaxis_title="Temps (ms)", yaxis_title="Fréquence (kHz)",
-                      template="plotly_dark",height=560)
-    fig.update_xaxes(range=[float(t[0])-5,float(t[-1])+5])
-    fig.update_yaxes(range=[low,high])
+    from plotly.subplots import make_subplots
+    if detail not in ("overlay", "profiles", "both"):
+        raise ValueError("detail must be overlay, profiles, or both")
+    times, freq, db, t, f, ridge, grid = plot_data
+    show_overlay = detail != "profiles"
+    show_profiles = detail != "overlay"
+    rows = int(show_overlay) + int(show_profiles)
+    titles = (["Spectrogramme mixte + trajectoires"] if show_overlay else [])
+    titles += (["Profils perpendiculaires : intensité et chemin retenu"]
+               if show_profiles else [])
+    fig = make_subplots(rows=rows, cols=1, subplot_titles=titles,
+                        vertical_spacing=0.11 if rows == 2 else 0.05)
+    low = max(float(min(f.min(), ridge["ridge_freqs_khz"].min()))-12, 0)
+    high = min(float(max(f.max(), ridge["ridge_freqs_khz"].max()))+12,
+               float(freq[-1]))
+    if show_overlay:
+        keep = (freq>=low)&(freq<=high)
+        fig.add_trace(go.Heatmap(
+            x=times,y=freq[keep],z=db[keep,:],colorscale="Magma",
+            colorbar=dict(title="dB",x=1.02,len=0.42 if rows == 2 else 0.8,
+                          y=0.79 if rows == 2 else 0.5),
+            name="STFT 65 % + Reassignment 35 %"),row=1,col=1)
+        fig.add_trace(go.Scatter(
+            x=t,y=f,mode="lines+markers",name="Annotation manuelle",
+            line=dict(color="cyan",width=2)),row=1,col=1)
+        fig.add_trace(go.Scatter(
+            x=ridge["ridge_times_ms"],y=ridge["ridge_freqs_khz"],
+            mode="lines+markers",name="Crête continue (normales)",
+            line=dict(color="lime",width=2),
+            customdata=np.asarray(ridge["signed_normal_khz"]),
+            hovertemplate="t=%{x:.3f} ms<br>f=%{y:.2f} kHz"
+                          "<br>écart normal=%{customdata:+.2f}<extra></extra>"),
+            row=1,col=1)
+        fig.update_xaxes(range=[float(t[0])-5,float(t[-1])+5],
+                         title_text="Temps (ms)",row=1,col=1)
+        fig.update_yaxes(range=[low,high],
+                         title_text="Fréquence (kHz)",row=1,col=1)
+    if show_profiles:
+        row_index = 2 if show_overlay else 1
+        offsets = np.asarray(ridge["normal_offsets_khz"])
+        profile = np.asarray(ridge["profiles_db"],dtype=float)
+        # Normalize each profile only for visualization, not the tracking
+        # score; these values describe the display, not calibrated SNR.
+        baseline = np.nanmin(profile,axis=1)
+        contrast = np.where(np.isfinite(profile),
+                            profile-baseline[:,None],np.nan)
+        fig.add_trace(go.Heatmap(
+            x=ridge["reference_times_ms"],y=offsets,z=contrast.T,
+            colorscale="Viridis",colorbar=dict(
+                title="dB relatif",x=1.02,len=0.42 if rows == 2 else 0.8,
+                y=0.23 if rows == 2 else 0.5),
+            name="Profils normaux"),row=row_index,col=1)
+        fig.add_trace(go.Scatter(
+            x=ridge["reference_times_ms"],y=ridge["signed_normal_khz"],
+            mode="lines+markers",name="Chemin retenu (écart signé)",
+            line=dict(color="white",width=2),
+            hovertemplate="t=%{x:.3f} ms<br>écart normal=%{y:+.2f}<extra></extra>"),
+            row=row_index,col=1)
+        fig.add_hline(y=0,line_color="cyan",line_dash="dash",
+                      row=row_index,col=1)
+        fig.update_xaxes(title_text="Temps de référence (ms)",
+                         row=row_index,col=1)
+        fig.update_yaxes(title_text="Écart normal signé (unités normalisées)",
+                         row=row_index,col=1)
+    fig.update_layout(
+        title=(f"{info['wav']} — chirp {info['chirp_id']} — "
+               f"{info['review_priority']}<br><sup>"
+               f"STFT hop {grid['stft_hop_samples']} "
+               f"({grid['stft_hop_us']:.0f} µs) · "
+               f"Reassignment hop {grid['reassignment_hop_samples']} "
+               f"({grid['reassignment_hop_us']:.0f} µs) · "
+               f"{grid['stft_columns']} colonnes</sup>"),
+        template="plotly_dark",height=850 if rows == 2 else 560,
+        legend=dict(orientation="h",y=-0.13))
     fig.write_html(str(path),include_plotlyjs=True,full_html=True)
 
 
 def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
-           max_chirps=None, plot_top=10, fft_size=1024,
+           max_chirps=None, plot_top=10, plot_mode="suspects",
+           plot_detail="both", validate_shifts=False, shift_limit=10,
+           fft_size=1024,
            overlap_fraction=0.75, reassignment_percent=35,
            spectral_alpha=0.0, max_columns=1600,
            stft_hop_samples=32, reassignment_hop_samples=16,
@@ -184,6 +233,12 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
         raise ValueError("max_chirps must be positive")
     if plot_top<0:
         raise ValueError("plot_top must be >= 0")
+    if plot_mode not in ("suspects","validation"):
+        raise ValueError("plot_mode must be suspects or validation")
+    if plot_detail not in ("overlay","profiles","both"):
+        raise ValueError("plot_detail must be overlay, profiles or both")
+    if shift_limit<1:
+        raise ValueError("shift_limit must be >= 1")
     with (root/"manifest.csv").open(encoding="utf-8-sig",newline="") as stream:
         manifest=list(csv.DictReader(stream))
     if not manifest:
@@ -256,7 +311,11 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
     # (several hundred large 2-D arrays) in RAM.
     plots=[]
     if plot_top:
-        lookups={(r["wav"],str(r["chirp_id"])):r for r in queue[:plot_top]}
+        # Validation mode must display apparently correct annotations as well:
+        # an anchored tracker can look convincing without measuring the ridge.
+        candidates = (results if plot_mode == "validation" else queue)
+        candidates = [r for r in candidates if not r["error"]][:plot_top]
+        lookups={(r["wav"],str(r["chirp_id"])):r for r in candidates}
         plotted=set()
         for entry in manifest:
             if not lookups or entry.get("partition")!="calibration":
@@ -282,12 +341,80 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
                         reassignment_hop_samples=reassignment_hop_samples,
                         with_plot=True)
                     safe=f"review_{len(plots)+1:03d}.html"
-                    write_plot(destination/safe,lookups[match],detail)
+                    write_plot(destination/safe,lookups[match],detail,
+                               detail=plot_detail)
                     plots.append({"wav":key,"chirp_id":chirp.get("chirp_id"),
                                   "html":safe})
                 except (OSError,ValueError,ImportError) as exc:
                     diagnostics.append({"wav":key,"chirp_id":chirp.get("chirp_id"),
                                         "plot_error":str(exc)})
+    shift_rows = []
+    if validate_shifts:
+        # Deliberately perturb manual references in memory only. The original
+        # annotation is *not* assumed perfect: compare recovery relative to
+        # baseline before and after the injected displacement.
+        selected = [r for r in results if not r["error"]][:shift_limit]
+        selected_keys = {(r["wav"], str(r["chirp_id"])) for r in selected}
+        for entry in manifest:
+            if entry.get("partition") != "calibration":
+                continue
+            key = entry["dataset_wav"]
+            if not any(k[0] == key for k in selected_keys):
+                continue
+            wav = (root/key).resolve()
+            ann = (root/entry["dataset_json"]).resolve()
+            for chirp in cache[ann]["files"][wav.name]["chirps"]:
+                match = (key, str(chirp.get("chirp_id","")))
+                if match not in selected_keys:
+                    continue
+                baseline = next(r for r in selected if
+                                (r["wav"],str(r["chirp_id"])) == match)
+                for shift in (3.0,5.0,-5.0):
+                    # No files are ever written; shifted points exist in
+                    # memory for this diagnostic experiment only.
+                    perturbed = dict(chirp)
+                    perturbed["points"] = [
+                        {**p, "f_khz": float(p["f_khz"])+shift}
+                        for p in chirp["points"]]
+                    record = {
+                        "wav":key, "chirp_id":chirp.get("chirp_id"),
+                        "injected_vertical_shift_khz":shift,
+                        "baseline_signed_normal":baseline["median_signed_normal_khz"],
+                        "shifted_signed_normal":"", "recovery_signed_delta":"",
+                        "opposite_direction_recovered":False,
+                        "error":""}
+                    try:
+                        shifted = evaluate_chirp_v2(
+                            wav,perturbed,pipeline,fft_size=fft_size,
+                            overlap_fraction=overlap_fraction,
+                            reassignment_percent=reassignment_percent,
+                            spectral_alpha=spectral_alpha,
+                            max_columns=max_columns,samples=samples,
+                            radius_khz=radius_khz,step_khz=step_khz,
+                            stft_hop_samples=stft_hop_samples,
+                            reassignment_hop_samples=reassignment_hop_samples)
+                        current = shifted["median_signed_normal_khz"]
+                        delta = current - float(baseline["median_signed_normal_khz"])
+                        record["shifted_signed_normal"] = current
+                        record["recovery_signed_delta"] = round(delta,3)
+                        record["opposite_direction_recovered"] = (
+                            delta * shift < 0 and abs(delta)>=0.5)
+                    except (OSError,ValueError,TypeError,IndexError,RuntimeError) as exc:
+                        record["error"] = str(exc)
+                    shift_rows.append(record)
+        with (destination/"shift_validation.csv").open(
+                "w",encoding="utf-8-sig",newline="") as stream:
+            fields = ("wav","chirp_id","injected_vertical_shift_khz",
+                      "baseline_signed_normal","shifted_signed_normal",
+                      "recovery_signed_delta","opposite_direction_recovered",
+                      "error")
+            writer = csv.DictWriter(stream,fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(shift_rows)
+    evaluated_shifts=[r for r in shift_rows if not r["error"]]
+    shift_detection_rate = (
+        sum(r["opposite_direction_recovered"] for r in evaluated_shifts)
+        / len(evaluated_shifts) if evaluated_shifts else None)
     summary={
         "version":"continuous_normals_v2",
         "partition":"calibration",
@@ -303,8 +430,12 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
         "review_priority_counts":dict(Counter(r["review_priority"] for r in results)),
         "queue_count":len(queue),
         "diagnostics":len(diagnostics),
+        "plot_mode":plot_mode,
+        "plot_detail":plot_detail,
         "plot_count":len(plots),
         "plots":plots,
+        "shift_validation_runs":len(shift_rows),
+        "shift_validation_detection_rate":shift_detection_rate,
         "note":"Signed normal offsets are in normalized (scaled time,frequency) geometry; "
                "positive means the ridge is above the manual annotation in frequency. "
                "Thresholds are provisional; no automatic rejection.",
@@ -323,6 +454,14 @@ def main(argv=None):
     parser.add_argument("--analyser-root",type=Path,default=DEFAULT_ANALYSER_ROOT)
     parser.add_argument("--max-chirps",type=int)
     parser.add_argument("--plot-top",type=int,default=10)
+    parser.add_argument("--plot-mode",choices=("suspects","validation"),
+                        default="suspects",
+                        help="validation exports first N chirps, including no-alert")
+    parser.add_argument("--plot-detail",choices=("overlay","profiles","both"),
+                        default="both")
+    parser.add_argument("--validate-shifts",action="store_true",
+                        help="Inject +3,+5,-5 kHz errors in memory and compare recovery")
+    parser.add_argument("--shift-limit",type=int,default=10)
     parser.add_argument("--fft-size",type=int,default=1024)
     parser.add_argument("--overlap",type=float,default=0.75,
                         help="Minimum STFT overlap; fine hop is additionally enforced")
@@ -339,6 +478,9 @@ def main(argv=None):
     try:
         result=run_v2(args.dataset,args.output,analyser_root=args.analyser_root,
                       max_chirps=args.max_chirps,plot_top=args.plot_top,
+                      plot_mode=args.plot_mode,plot_detail=args.plot_detail,
+                      validate_shifts=args.validate_shifts,
+                      shift_limit=args.shift_limit,
                       fft_size=args.fft_size,overlap_fraction=args.overlap,
                       reassignment_percent=args.reassignment_percent,
                       spectral_alpha=args.spectral_alpha,max_columns=args.max_columns,
