@@ -269,3 +269,23 @@ La campagne `tools/audit_sensitivity.py` rapporte désormais
 `legacy_new_alerts` et `local_new_alerts` pour comparer les deux
 méthodes sur les **mêmes perturbations**, sans modifier les annotations.
 Voir [la procédure de comparaison](docs/SENSIBILITE_ANNOTATIONS.md#score-local-glissant-expérimental-après-campagne-30-chirps).
+
+## Laboratoire autonome local V1
+
+Une commande Python orchestre l'audit des chirps sur Windows, reprend les
+expériences achevées à partir de SQLite, balaie plusieurs tailles de
+fenêtres et seuils, puis génère un tableau HTML :
+
+```powershell
+python tools/run_local_campaign.py --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" --output "C:\Users\damien\Documents\Python\Python-data\autolab-v1" --skip-chirps 3 --max-chirps 30 --windows 3,4,5,7 --thresholds 0.75,1,1.5,2,2.5 --max-trials 1
+```
+
+Relancer la même commande sans `--max-trials` pour compléter la campagne ;
+les essais achevés sont réutilisés. Les résultats sont consultables
+dans `campaign_report.html`, `campaign_scores.csv`,
+`campaign_summary.json` et `campaign.sqlite`. Les seuils sont
+explorés sans nouveau calcul acoustique ; les tailles de fenêtre
+nécessitent encore un calcul par configuration.
+
+Documentation : [laboratoire local](docs/LABORATOIRE_LOCAL.md).
+Aucune IA ni connexion cloud n'est nécessaire à la V1.
