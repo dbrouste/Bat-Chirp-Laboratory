@@ -112,11 +112,18 @@ def test_sensitivity_uses_only_calibration_and_does_not_edit_json(tmp_path,monke
     summary=run_sensitivity(dataset,output,max_chirps=1)
     assert summary["chirps_selected"]==1
     assert summary["cases"]==24
+    assert summary["local_window"]==5
+    assert summary["local_threshold_experimental_khz_eq"]==1.5
+    assert "local_new_alerts" in summary["groups"]["local"]
+    assert "legacy_new_alerts" in summary["groups"]["local"]
     assert (dataset/rows[0]["dataset_json"]).read_bytes()==original
     with (output/"sensitivity_cases.csv").open(encoding="utf-8-sig") as file:
         entries=list(csv.DictReader(file))
     assert len(entries)==24
     assert all(r["partition"]=="calibration" for r in entries)
+    assert all(r["baseline_local_score_eq"]!="" for r in entries)
+    assert all(r["perturbed_local_score_eq"]!="" for r in entries)
+    assert all(r["local_new_alert"] in ("True","False") for r in entries)
 
 
 def test_synthetic_matrix_run(tmp_path):
