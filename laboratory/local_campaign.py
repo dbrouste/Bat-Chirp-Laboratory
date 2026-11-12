@@ -42,16 +42,45 @@ def parse_floats(value):
 
 
 def run_key(dataset, *, max_chirps, skip_chirps, fft_size, stft_hop,
-            reassignment_hop, spectral_alpha, window):
+            reassignment_hop, spectral_alpha, window, analyser_root=None):
     """Fingerprint the run definition, not sensitive WAV contents."""
     manifest = (dataset / "manifest.csv").read_bytes()
+    # Include actual dataset JSON/WAV metadata and implementation code:
+    # do not reuse stale results after an annotation or algorithm change.
+    with (dataset / "manifest.csv").open(encoding="utf-8-sig", newline="") as stream:
+        entries = list(csv.DictReader(stream))
+    sources = []
+    for entry in entries:
+        if entry.get("partition") != "calibration":
+            continue
+        for field in ("dataset_json", "dataset_wav"):
+            item = (dataset / entry[field]).resolve()
+            if not item.is_relative_to(dataset):
+                raise ValueError("manifest references path outside dataset")
+            stat = item.stat()
+            sources.append((str(item.relative_to(dataset)), stat.st_size,
+                            stat.st_mtime_ns))
+    sources = sorted(set(sources))
+    code_root = Path(__file__).resolve().parents[1]
+    implementation = []
+    for relative in ("laboratory/sensitivity_audit.py",
+                     "laboratory/acoustic_audit_v2.py",
+                     "laboratory/local_quality.py",
+                     "laboratory/transverse_ridge.py",
+                     "chirp_geometry.py"):
+        item = code_root / relative
+        if item.is_file():
+            implementation.append((relative,hashlib.sha256(item.read_bytes()).hexdigest()))
     definition = {
         "version": SCHEMA_VERSION, "dataset": str(dataset),
         "manifest_sha256": hashlib.sha256(manifest).hexdigest(),
+        "dataset_file_metadata": sources,
+        "code_hashes": implementation,
         "max_chirps": max_chirps, "skip_chirps": skip_chirps,
         "fft_size": fft_size, "stft_hop": stft_hop,
         "reassignment_hop": reassignment_hop,
         "spectral_alpha": spectral_alpha, "window": window,
+        "analyser_root": str(Path(analyser_root).resolve()) if analyser_root else None,
     }
     return hashlib.sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest()[:20]
 
@@ -87,7 +116,7 @@ def scored_rows(csv_path, threshold):
         for row in csv.DictReader(stream):
             scenario = row["scenario"]
             region = row["region"]
-            for key in ((scenario, "all"), (scenario, region)):
+            for key in {(scenario, "all"), (scenario, region)}:
                 totals = groups[key]
                 totals[0] += 1
                 if row["error"]:
@@ -220,7 +249,8 @@ def run_campaign(dataset, output, *, analyser_root=None, max_chirps=30,
                         skip_chirps=skip_chirps,fft_size=fft_size,
                         stft_hop=stft_hop,
                         reassignment_hop=reassignment_hop,
-                        spectral_alpha=spectral_alpha,window=window)
+                        spectral_alpha=spectral_alpha,window=window,
+                        analyser_root=analyser_root)
             folder=output/"runs"/key
             csv_file=folder/"sensitivity_cases.csv"
             existing=db.execute("SELECT state,output_dir FROM experiments WHERE run_id=?",
