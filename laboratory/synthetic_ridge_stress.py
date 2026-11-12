@@ -18,15 +18,15 @@ def synthetic_case(slope, offset, interference):
     freqs=np.linspace(20.,180.,641)
     t,f=np.meshgrid(times,freqs)
     manual_t=np.array([20.,24.])
-    manual_f=105. + slope*(manual_t-20)
+    manual_f=150. + slope*(manual_t-20)
     scale,_=square_time_scale(manual_t,manual_f)
-    normal_distance=(f-(105.+slope*(t-20)))*scale/np.hypot(scale,slope)
+    normal_distance=(f-(150.+slope*(t-20)))*scale/np.hypot(scale,slope)
     signal=(32*np.exp(-.5*((normal_distance-offset)/.60)**2)
             *np.exp(-.5*((t-22)/1.85)**8))
     if interference=="parallel":
         signal+=36*np.exp(-.5*((normal_distance-offset-7)/.6)**2)*np.exp(-.5*((t-22)/1.85)**8)
     if interference=="crossing":
-        other=105.+offset+slope*(t-20)+16*(t-22)
+        other=150.+offset+slope*(t-20)+16*(t-22)
         signal+=60*np.exp(-.5*((f-other)/.8)**2)*np.exp(-.5*((t-22)/.28)**2)
     if interference=="weak":
         signal=signal*.1
