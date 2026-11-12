@@ -482,6 +482,7 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
     summary={
         "version":"continuous_normals_square_v3",
         "partition":"calibration",
+        "dataset":str(root),
         "representation":"Bat-Acoustic-Analyser mixed display",
         "stft_percent":100-reassignment_percent,
         "reassignment_percent":reassignment_percent,
