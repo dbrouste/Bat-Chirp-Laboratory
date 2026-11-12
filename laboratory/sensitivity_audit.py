@@ -123,7 +123,7 @@ def classify_result(original, altered, scenario, amplitude, *,
 
 
 def run_sensitivity(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
-                    max_chirps=10, fft_size=1024, stft_hop=32,
+                    max_chirps=10, skip_chirps=0, fft_size=1024, stft_hop=32,
                     reassignment_hop=16, spectral_alpha=0.0):
     dataset=Path(dataset).resolve()
     output=Path(output).resolve()
@@ -131,6 +131,8 @@ def run_sensitivity(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
         raise ValueError("output must be outside the dataset")
     if max_chirps<1:
         raise ValueError("max_chirps must be positive")
+    if skip_chirps<0:
+        raise ValueError("skip_chirps must be >= 0")
     pipeline=load_display_pipeline(Path(analyser_root))
     with (dataset/"manifest.csv").open(encoding="utf-8-sig",newline="") as file:
         records=list(csv.DictReader(file))
@@ -140,6 +142,7 @@ def run_sensitivity(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
     warnings=[]
     cache={}
     seen=0
+    skipped=0
     for entry in records:
         if entry.get("partition")!="calibration":
             continue
@@ -151,6 +154,9 @@ def run_sensitivity(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
             cache[ann]=json.loads(ann.read_text(encoding="utf-8-sig"))
         for chirp in cache[ann]["files"][wav.name].get("chirps",[]):
             if not isinstance(chirp,dict) or chirp.get("source")!="manual" or chirp.get("status")!="validated":
+                continue
+            if skipped<skip_chirps:
+                skipped+=1
                 continue
             if seen>=max_chirps:
                 break
@@ -220,6 +226,7 @@ def run_sensitivity(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
     summary={
         "version":"reference_sensitivity_v1",
         "partition":"calibration","chirps_selected":seen,
+        "chirps_skipped":skipped,
         "chirps_successful":len({(r["wav"],str(r["chirp_id"]))
                                 for r in details}),"cases":len(details),
         "fft_size":fft_size,"stft_hop":stft_hop,
@@ -242,6 +249,8 @@ def main(argv=None):
     parser.add_argument("--output",type=Path,required=True)
     parser.add_argument("--analyser-root",type=Path,default=DEFAULT_ANALYSER_ROOT)
     parser.add_argument("--max-chirps",type=int,default=10)
+    parser.add_argument("--skip-chirps",type=int,default=0,
+                        help="Skip the first N validated manual calibration chirps")
     parser.add_argument("--fft-size",type=int,default=1024)
     parser.add_argument("--stft-hop",type=int,default=32)
     parser.add_argument("--reassignment-hop",type=int,default=16)
@@ -250,7 +259,8 @@ def main(argv=None):
     try:
         result=run_sensitivity(args.dataset,args.output,
                                analyser_root=args.analyser_root,
-                               max_chirps=args.max_chirps,fft_size=args.fft_size,
+                               max_chirps=args.max_chirps,
+                               skip_chirps=args.skip_chirps,fft_size=args.fft_size,
                                stft_hop=args.stft_hop,
                                reassignment_hop=args.reassignment_hop,
                                spectral_alpha=args.spectral_alpha)
