@@ -27,7 +27,10 @@ FIELDS = ("partition","session","wav","source_wav","source_json",
           "baseline_signed_eq","perturbed_signed_eq","delta_signed_eq",
           "baseline_median_abs_eq","perturbed_median_abs_eq",
           "baseline_p90_eq","perturbed_p90_eq",
-          "baseline_priority","perturbed_priority","error",
+          "baseline_priority","perturbed_priority",
+          "baseline_local_score_eq","perturbed_local_score_eq",
+          "delta_local_score_eq","baseline_local_flag","perturbed_local_flag",
+          "local_new_alert","error",
           "direction_recovered","error_metric_increased",
           "known_error_detected","remarks")
 
@@ -124,7 +127,8 @@ def classify_result(original, altered, scenario, amplitude, *,
 
 def run_sensitivity(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
                     max_chirps=10, skip_chirps=0, fft_size=1024, stft_hop=32,
-                    reassignment_hop=16, spectral_alpha=0.0):
+                    reassignment_hop=16, spectral_alpha=0.0,
+                    local_window=5, local_threshold=1.5):
     dataset=Path(dataset).resolve()
     output=Path(output).resolve()
     if output==dataset or output.is_relative_to(dataset):
@@ -165,7 +169,9 @@ def run_sensitivity(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
                 base=evaluate_chirp_v2(wav,chirp,pipeline,fft_size=fft_size,
                                       stft_hop_samples=stft_hop,
                                       reassignment_hop_samples=reassignment_hop,
-                                      spectral_alpha=spectral_alpha)
+                                      spectral_alpha=spectral_alpha,
+                                      local_window=local_window,
+                                      local_threshold=local_threshold)
             except (OSError,ValueError,TypeError,IndexError,RuntimeError) as exc:
                 warnings.append({"wav":entry["dataset_wav"],
                                  "chirp_id":chirp.get("chirp_id"),
@@ -183,7 +189,9 @@ def run_sensitivity(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
                            baseline_signed_eq=base["median_signed_normal_khz_eq"],
                            baseline_median_abs_eq=base["median_abs_normal_khz_eq"],
                            baseline_p90_eq=base["p90_abs_normal_khz_eq"],
-                           baseline_priority=base["review_priority"])
+                           baseline_priority=base["review_priority"],
+                           baseline_local_score_eq=base["local_max_abs_signed_median_khz_eq"],
+                           baseline_local_flag=base["local_flag_experimental"])
                 if scenario=="trim":
                     row["remarks"]="Coverage defect; ridge offset alone is not a valid detector"
                 try:
@@ -192,11 +200,20 @@ def run_sensitivity(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
                                             fft_size=fft_size,
                                             stft_hop_samples=stft_hop,
                                             reassignment_hop_samples=reassignment_hop,
-                                            spectral_alpha=spectral_alpha)
+                                            spectral_alpha=spectral_alpha,
+                                            local_window=local_window,
+                                            local_threshold=local_threshold)
                     row.update(perturbed_signed_eq=result["median_signed_normal_khz_eq"],
                                perturbed_median_abs_eq=result["median_abs_normal_khz_eq"],
                                perturbed_p90_eq=result["p90_abs_normal_khz_eq"],
-                               perturbed_priority=result["review_priority"])
+                               perturbed_priority=result["review_priority"],
+                               perturbed_local_score_eq=result["local_max_abs_signed_median_khz_eq"],
+                               delta_local_score_eq=round(
+                                   result["local_max_abs_signed_median_khz_eq"]-
+                                   base["local_max_abs_signed_median_khz_eq"],3),
+                               perturbed_local_flag=result["local_flag_experimental"],
+                               local_new_alert=(not base["local_flag_experimental"] and
+                                                result["local_flag_experimental"]))
                     row.update(classify_result(base,result,scenario,amplitude))
                 except (OSError,ValueError,TypeError,IndexError,RuntimeError) as exc:
                     row["error"]=str(exc)
@@ -220,6 +237,12 @@ def run_sensitivity(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
             "cases":len(items),"valid":len(valid),"errors":len(items)-len(valid),
             "direction_recovered":sum(r["direction_recovered"] for r in valid),
             "detected_heuristic":sum(r["known_error_detected"] for r in valid),
+            "legacy_new_alerts":sum(
+                r["baseline_priority"]=="no_alert_unverified" and
+                r["perturbed_priority"]!="no_alert_unverified" for r in valid),
+            "local_new_alerts":sum(r["local_new_alert"] for r in valid),
+            "baseline_local_flagged":sum(
+                str(r["baseline_local_flag"])=="True" for r in valid),
             "note":("Truncation must be tested with independent time-envelope coverage"
                     if key=="trim" else "Heuristic, non-calibrated sensitivity"),
         }
@@ -231,6 +254,8 @@ def run_sensitivity(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
                                 for r in details}),"cases":len(details),
         "fft_size":fft_size,"stft_hop":stft_hop,
         "reassignment_hop":reassignment_hop,
+        "local_window":local_window,
+        "local_threshold_experimental_khz_eq":local_threshold,
         "groups":group_stats,"baseline_errors":warnings,
         "notes":["All perturbations of manual coordinates are in-memory only.",
                  "Global shifts: direction response; local shifts: sign or P90 response.",
@@ -255,6 +280,8 @@ def main(argv=None):
     parser.add_argument("--stft-hop",type=int,default=32)
     parser.add_argument("--reassignment-hop",type=int,default=16)
     parser.add_argument("--spectral-alpha",type=float,default=0.0)
+    parser.add_argument("--local-window",type=int,default=5)
+    parser.add_argument("--local-threshold",type=float,default=1.5)
     args=parser.parse_args(argv)
     try:
         result=run_sensitivity(args.dataset,args.output,
@@ -263,7 +290,9 @@ def main(argv=None):
                                skip_chirps=args.skip_chirps,fft_size=args.fft_size,
                                stft_hop=args.stft_hop,
                                reassignment_hop=args.reassignment_hop,
-                               spectral_alpha=args.spectral_alpha)
+                               spectral_alpha=args.spectral_alpha,
+                               local_window=args.local_window,
+                               local_threshold=args.local_threshold)
     except (OSError,ValueError,ImportError,KeyError) as exc:
         parser.exit(2,f"Error: {exc}\n")
     print(json.dumps(result,ensure_ascii=False,indent=2))
