@@ -17,6 +17,7 @@ import soundfile as sf
 
 from .acoustic_audit import DEFAULT_ANALYSER_ROOT, load_display_pipeline, points_of
 from .transverse_ridge import continuous_normal_ridge
+from .local_quality import local_error_metrics, experimental_local_flag
 
 FIELDS = (
     "partition", "session", "wav", "annotation", "source_wav", "source_json",
@@ -27,6 +28,11 @@ FIELDS = (
     "time_scale_khz_per_ms", "normalization_mode",
     "median_signed_normal_khz_eq", "median_abs_normal_khz_eq",
     "p90_abs_normal_khz_eq", "support_fraction_3khz_eq",
+    "local_window_points", "local_max_median_abs_khz_eq",
+    "local_max_abs_signed_median_khz_eq", "local_peak_signed_median_khz_eq",
+    "local_peak_start_index", "local_peak_end_index", "local_peak_region",
+    "local_start_median_abs_khz_eq", "local_middle_median_abs_khz_eq",
+    "local_end_median_abs_khz_eq", "local_flag_experimental",
     "review_priority", "reason", "error",
 )
 
@@ -37,6 +43,7 @@ def evaluate_chirp_v2(wav_path, chirp, display_pipeline, *,
                       max_columns=1600, samples=20, margin_ms=15,
                       radius_khz=8.0, step_khz=0.5,
                       stft_hop_samples=32, reassignment_hop_samples=16,
+                      local_window=5, local_threshold=1.5,
                       with_plot=False):
     """Evaluate one curve and optionally return plot-ready spectrogram data."""
     t, f = points_of(chirp)
@@ -93,6 +100,8 @@ def evaluate_chirp_v2(wav_path, chirp, display_pipeline, *,
     ridge=continuous_normal_ridge(times,frequencies,db,t,f,
                                   count=samples,radius_khz=radius_khz,
                                   step_khz=step_khz,noise_db=baseline)
+    local=local_error_metrics(ridge["signed_normal_khz_eq"],window=local_window)
+    local_flag=experimental_local_flag(local,threshold=local_threshold)
     from .transverse_ridge import sample_bilinear
     ridge_db=sample_bilinear(times,frequencies,db,
                             ridge["ridge_times_ms"],ridge["ridge_freqs_khz"])
@@ -130,6 +139,17 @@ def evaluate_chirp_v2(wav_path, chirp, display_pipeline, *,
         "support_fraction_3khz_eq":round(ridge["support_fraction_3khz_eq"],3),
         "review_priority":priority,
         "reason":";".join(reasons),
+        "local_window_points":local_window,
+        "local_max_median_abs_khz_eq":round(local["local_max_median_abs_khz_eq"],3),
+        "local_max_abs_signed_median_khz_eq":round(local["local_max_abs_signed_median_khz_eq"],3),
+        "local_peak_signed_median_khz_eq":round(local["local_peak_signed_median_khz_eq"],3),
+        "local_peak_start_index":local["local_peak_start_index"],
+        "local_peak_end_index":local["local_peak_end_index"],
+        "local_peak_region":local["local_peak_region"],
+        "local_start_median_abs_khz_eq":round(local["local_start_median_abs_khz_eq"],3),
+        "local_middle_median_abs_khz_eq":round(local["local_middle_median_abs_khz_eq"],3),
+        "local_end_median_abs_khz_eq":round(local["local_end_median_abs_khz_eq"],3),
+        "local_flag_experimental":local_flag,
         "error":"",
     }
     if not with_plot:
@@ -232,7 +252,8 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
            overlap_fraction=0.75, reassignment_percent=35,
            spectral_alpha=0.0, max_columns=1600,
            stft_hop_samples=32, reassignment_hop_samples=16,
-           samples=20, radius_khz=8.0, step_khz=0.5):
+           samples=20, radius_khz=8.0, step_khz=0.5,
+           local_window=5, local_threshold=1.5):
     root=Path(dataset).resolve()
     destination=Path(output).resolve()
     if destination==root or destination.is_relative_to(root):
@@ -247,6 +268,8 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
         raise ValueError("plot_detail must be overlay, profiles or both")
     if shift_limit<1:
         raise ValueError("shift_limit must be >= 1")
+    if local_window < 3 or local_window > samples or local_threshold <= 0:
+        raise ValueError("invalid local scoring parameters")
     with (root/"manifest.csv").open(encoding="utf-8-sig",newline="") as stream:
         manifest=list(csv.DictReader(stream))
     if not manifest:
@@ -289,7 +312,8 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
                          spectral_alpha=spectral_alpha,max_columns=max_columns,
                          samples=samples,radius_khz=radius_khz,step_khz=step_khz,
                          stft_hop_samples=stft_hop_samples,
-                         reassignment_hop_samples=reassignment_hop_samples))
+                         reassignment_hop_samples=reassignment_hop_samples,
+                         local_window=local_window,local_threshold=local_threshold))
             except (OSError,ValueError,TypeError,IndexError,RuntimeError) as exc:
                 row.update(error=str(exc),review_priority="analysis_error",
                            reason="analysis_error")
@@ -347,6 +371,7 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
                         step_khz=step_khz,
                         stft_hop_samples=stft_hop_samples,
                         reassignment_hop_samples=reassignment_hop_samples,
+                        local_window=local_window,local_threshold=local_threshold,
                         with_plot=True)
                     safe=f"review_{len(plots)+1:03d}.html"
                     write_plot(destination/safe,lookups[match],detail,
@@ -438,6 +463,9 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
         "review_priority_counts":dict(Counter(r["review_priority"] for r in results)),
         "queue_count":len(queue),
         "diagnostics":len(diagnostics),
+        "local_window_points":local_window,
+        "local_threshold_experimental_khz_eq":local_threshold,
+        "local_flags_experimental":sum(r.get("local_flag_experimental") is True for r in results),
         "plot_mode":plot_mode,
         "plot_detail":plot_detail,
         "plot_count":len(plots),
@@ -483,6 +511,8 @@ def main(argv=None):
     parser.add_argument("--reassignment-percent",type=int,default=35)
     parser.add_argument("--spectral-alpha",type=float,default=0.0)
     parser.add_argument("--max-columns",type=int,default=1600)
+    parser.add_argument("--local-window",type=int,default=5)
+    parser.add_argument("--local-threshold",type=float,default=1.5)
     parser.add_argument("--normal-radius-khz",type=float,default=8.0)
     parser.add_argument("--normal-step-khz",type=float,default=0.5)
     args=parser.parse_args(argv)
@@ -497,7 +527,9 @@ def main(argv=None):
                       spectral_alpha=args.spectral_alpha,max_columns=args.max_columns,
                       radius_khz=args.normal_radius_khz,step_khz=args.normal_step_khz,
                       stft_hop_samples=args.stft_hop,
-                      reassignment_hop_samples=args.reassignment_hop)
+                      reassignment_hop_samples=args.reassignment_hop,
+                      local_window=args.local_window,
+                      local_threshold=args.local_threshold)
     except (OSError,ValueError,ImportError) as exc:
         parser.exit(2,f"Error: {exc}\n")
     print(json.dumps(result,indent=2,ensure_ascii=False))
