@@ -107,3 +107,51 @@ Chaque chirp produit 24 perturbations, soit 720 cas attendus pour 30 chirps
 traités sans erreur. Les résultats restent regroupés par type d'erreur.
 Pour viser d'autres sessions, il faut privilégier ultérieurement un
 échantillonnage stratifié plutôt que les premiers chirps de l'ordre du manifeste.
+
+
+## Score local glissant (expérimental, après campagne 30 chirps)
+
+L'audit V2 calcule désormais, sur les **mêmes 20 écarts normaux signés**
+exprimés en `kHz_eq`, une médiane sur chaque fenêtre contiguë de
+5 profils par défaut (configurable entre 3 et 20 via `--local-window`).
+Le score local est le maximum de la **valeur absolue de la médiane signée**
+de ces fenêtres, ce qui favorise les erreurs localement cohérentes
+et réduit l'influence d'un seul point aberrant. Sont également exportés :
+maximum de médiane des écarts absolus, position de la fenêtre la plus
+marquée, région début/milieu/fin, et médiane absolue dans chaque tiers.
+
+Les champs CSV sont `local_max_abs_signed_median_khz_eq`,
+`local_max_median_abs_khz_eq`, `local_peak_region`,
+`local_start_median_abs_khz_eq`, `local_middle_median_abs_khz_eq`,
+`local_end_median_abs_khz_eq`, et `local_flag_experimental`.
+
+L'alerte exploratoire est `local_flag_experimental=True` dès que
+le score atteint **1,5 kHz_eq** (`--local-threshold 1.5`).
+**Ce seuil n'est pas calibré ; il ne remplace pas `review_priority`.**
+Pour comparer équitablement une annotation à sa version perturbée,
+`local_new_alert` n'est vrai que si le score initial était sous le
+seuil et le score perturbé le franchit. Les annotations initiales déjà
+signalées sont comptées séparément dans `baseline_local_flagged`.
+
+`sensitivity_summary.json` contient maintenant pour chaque type
+`legacy_new_alerts`, `local_new_alerts` et
+`baseline_local_flagged`. La comparaison n'est pas un taux de faux
+positifs car le corpus n'a pas été entièrement réexaminé par un expert.
+
+### Reproduire les 30 mêmes chirps
+
+~~~powershell
+git pull origin main
+python -m pytest -q tests/test_local_quality.py tests/test_sensitivity_audit.py tests/test_transverse_ridge.py
+python tools/audit_sensitivity.py `
+  --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" `
+  --output "C:\Users\damien\Documents\Python\Python-data\sensitivity-batch2-local" `
+  --skip-chirps 3 `
+  --max-chirps 30 `
+  --local-window 5 `
+  --local-threshold 1.5
+~~~
+
+Comparer ce rapport au rapport `sensitivity-batch2` précédent,
+à population et à FFT/hop identiques. Ne pas cumuler les deux cohortes :
+il s'agit des **mêmes chirps** analysés avec des métriques supplémentaires.
