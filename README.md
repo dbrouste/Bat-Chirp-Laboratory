@@ -85,6 +85,23 @@ une nouvelle analyse.
 Sans `--processing-root`, le programme cherche par défaut un clone
 `../bat_full_spectrum_processing` à côté du dépôt du laboratoire.
 
+### Lancer les tests depuis le dossier parent
+
+Depuis `Python-Toolbox` (contenant `Bat-Chirp-Laboratory`) :
+
+```powershell
+python -m pytest -q .\Bat-Chirp-Laboratory\tests\test_transverse_ridge.py
+```
+
+La configuration `pyproject.toml` ajoute le chemin du dépôt pendant la
+collecte pytest. Pour installer les deux packages `laboratory` et
+`chirp_geometry` dans un environnement Python (utile pour exécuter les
+commandes depuis n'importe quel dossier) :
+
+```powershell
+python -m pip install -e .\Bat-Chirp-Laboratory
+```
+
 ## Vérification
 
 ```powershell
