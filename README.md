@@ -255,3 +255,17 @@ python tools/test_synthetic_ridges.py --output "C:\Users\damien\Documents\Python
 Voir [méthode, limites et interprétation](docs/SENSIBILITE_ANNOTATIONS.md).
 **Une annotation tronquée peut rester parfaitement sur la crête** :
 la mesure transverse seule ne permet pas de valider sa complétude.
+
+### Score local glissant — audit des annotations
+
+La V2 calcule désormais des métriques locales sur **5 profils consécutifs**
+(`--local-window 5`) pour révéler des erreurs au début, au milieu ou
+à la fin du chirp, invisibles à la médiane globale. L'alerte
+`local_flag_experimental` utilise un seuil provisoire de 1,5 kHz_eq
+(`--local-threshold 1.5`) et **ne remplace pas** la priorité
+historique `review_priority`.
+
+La campagne `tools/audit_sensitivity.py` rapporte désormais
+`legacy_new_alerts` et `local_new_alerts` pour comparer les deux
+méthodes sur les **mêmes perturbations**, sans modifier les annotations.
+Voir [la procédure de comparaison](docs/SENSIBILITE_ANNOTATIONS.md#score-local-glissant-expérimental-après-campagne-30-chirps).
