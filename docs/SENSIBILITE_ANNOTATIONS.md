@@ -87,3 +87,23 @@ ou un statut de validation A/B/C.
 Les troncatures, l'absence de signal et les appels superposés
 nécessitent des critères distincts (couverture temporelle du signal,
 support dans les extensions, cohérence des harmoniques).
+
+## Deuxième campagne sans recouvrement
+
+Pour tester les **30 chirps suivants** après un premier essai sur 3 chirps,
+utiliser `--skip-chirps 3 --max-chirps 30` : le décalage compte les
+annotations manuelles validées de la partition calibration dans l'ordre du
+manifeste. Les trois premiers chirps sont exclus de cette exécution.
+
+```powershell
+python tools/audit_sensitivity.py `
+  --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" `
+  --output "C:\Users\damien\Documents\Python\Python-data\sensitivity-batch2" `
+  --skip-chirps 3 `
+  --max-chirps 30
+```
+
+Chaque chirp produit 24 perturbations, soit 720 cas attendus pour 30 chirps
+traités sans erreur. Les résultats restent regroupés par type d'erreur.
+Pour viser d'autres sessions, il faut privilégier ultérieurement un
+échantillonnage stratifié plutôt que les premiers chirps de l'ordre du manifeste.
