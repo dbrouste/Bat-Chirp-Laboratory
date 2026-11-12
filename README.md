@@ -232,3 +232,26 @@ ajouter `--validate-shifts --shift-limit 10`. La sortie comporte alors
 les visualisations HTML (spectrogramme + profils perpendiculaires) et
 `shift_validation.csv`. Voir
 [la procédure complète](docs/AUDIT_ACOUSTIQUE_V2.md#validation-du-suivi-indépendamment-des-alertes).
+
+## Tester la sensibilité aux erreurs d'annotation
+
+Pour mesurer la réponse du suivi acoustique aux erreurs connues, un audit
+non destructif injecte **24 perturbations par chirp de calibration**
+(décalages globaux ±1/2/5 kHz, perturbations du début/milieu/fin,
+troncatures de 20/40 %). Le jeu test est exclu.
+
+```powershell
+python tools/audit_sensitivity.py --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" --output "C:\Users\damien\Documents\Python\Python-data\sensitivity-v1" --max-chirps 10
+```
+
+Une matrice séparée de 64 scénarios synthétiques vérifie la sensibilité
+aux pentes horizontales / inclinées / très verticales, aux crêtes
+concurrentes et aux croisements :
+
+```powershell
+python tools/test_synthetic_ridges.py --output "C:\Users\damien\Documents\Python\Python-data\synthetic-stress-v1"
+```
+
+Voir [méthode, limites et interprétation](docs/SENSIBILITE_ANNOTATIONS.md).
+**Une annotation tronquée peut rester parfaitement sur la crête** :
+la mesure transverse seule ne permet pas de valider sa complétude.
