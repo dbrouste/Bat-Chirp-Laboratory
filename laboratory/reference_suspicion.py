@@ -112,12 +112,20 @@ def suspicion_metrics(acoustic: dict, geometry_flags: str = "") -> dict:
     explanations = []
     if median > 3 or signed > 2:
         explanations.append("Décalage par rapport à la crête")
+    elif median > 1.5:
+        explanations.append("Écart spectral modéré")
     if p90 > 5 or local_max > 2.5 or local_peak > 2:
         explanations.append("Déviation locale ou extrémité")
+    elif local_max > 1.5:
+        explanations.append("Écart local modéré")
+    if support < 0.5:
+        explanations.append("Soutien spectral discontinu")
     if flags:
         explanations.extend(GEOMETRY_REASONS.get(f, f) for f in flags[:2])
     if contrast < 6:
         explanations.append("Signal acoustique ambigu")
+    elif contrast < 10:
+        explanations.append("Contraste spectral modéré")
     if not explanations:
         explanations.append("Aucune anomalie marquée")
     return {
