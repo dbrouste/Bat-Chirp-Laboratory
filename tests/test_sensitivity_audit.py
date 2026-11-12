@@ -126,3 +126,37 @@ def test_synthetic_matrix_run(tmp_path):
     summary=run_synthetic(tmp_path/"synthetic")
     assert summary["cases"]==64
     assert (tmp_path/"synthetic"/"synthetic_stress.csv").is_file()
+
+
+def test_skip_chirps_excludes_previously_tested_entries(tmp_path, monkeypatch):
+    from laboratory import sensitivity_audit
+    monkeypatch.setattr(sensitivity_audit, "load_display_pipeline",
+                        lambda _: fake_display)
+    root = tmp_path / "dataset"
+    wav = root / "calibration" / "wav" / "night" / "night.wav"
+    wav.parent.mkdir(parents=True)
+    with wave.open(str(wav), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(384000)
+        handle.writeframes(b"\0\0" * int(.08 * 384000))
+    ann = root / "calibration" / "annotations" / "night" / "night.json"
+    ann.parent.mkdir(parents=True)
+    first = example()
+    second = {**example(), "chirp_id": 43}
+    ann.write_text(json.dumps({"files":{wav.name:{"chirps":[first,second]}}}))
+    row = {"partition":"calibration", "session":"night",
+           "dataset_wav":wav.relative_to(root).as_posix(),
+           "dataset_json":ann.relative_to(root).as_posix()}
+    with (root / "manifest.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=row)
+        writer.writeheader()
+        writer.writerow(row)
+    output=tmp_path/"out"
+    result=run_sensitivity(root, output, max_chirps=1, skip_chirps=1)
+    assert result["chirps_skipped"]==1
+    assert result["chirps_selected"]==1
+    with (output/"sensitivity_cases.csv").open(encoding="utf-8-sig") as handle:
+        cases=list(csv.DictReader(handle))
+    assert len(cases)==24
+    assert {x["chirp_id"] for x in cases}=={"43"}
