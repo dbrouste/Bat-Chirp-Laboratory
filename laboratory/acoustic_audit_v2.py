@@ -33,6 +33,7 @@ FIELDS = (
     "local_peak_start_index", "local_peak_end_index", "local_peak_region",
     "local_start_median_abs_khz_eq", "local_middle_median_abs_khz_eq",
     "local_end_median_abs_khz_eq", "local_flag_experimental",
+    "local_signed_windows_json", "local_abs_windows_json",
     "review_priority", "reason", "error",
 )
 
@@ -150,6 +151,10 @@ def evaluate_chirp_v2(wav_path, chirp, display_pipeline, *,
         "local_middle_median_abs_khz_eq":round(local["local_middle_median_abs_khz_eq"],3),
         "local_end_median_abs_khz_eq":round(local["local_end_median_abs_khz_eq"],3),
         "local_flag_experimental":local_flag,
+        "local_signed_windows_json":json.dumps([
+            round(float(x),3) for x in local["local_signed_window_series_khz_eq"]]),
+        "local_abs_windows_json":json.dumps([
+            round(float(x),3) for x in local["local_abs_window_series_khz_eq"]]),
         "error":"",
     }
     if not with_plot:
