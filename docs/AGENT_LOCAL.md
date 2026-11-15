@@ -23,8 +23,16 @@ automatiques ne seront jamais fusionnées ni déployées directement.
 - Les sorties sont obligatoirement **en dehors** du dossier du corpus.
 - Le poids SNR, le protocole géométrique et la liste des références ne
   changent jamais entre les essais.
-- Les candidats non associés ne sont **pas des faux positifs attestés**,
-  car toutes les vocalisations ne sont pas nécessairement annotées.
+- **Même les WAV avec annotations manuelles sont partiellement annotés.**
+  Seules les trajectoires manuelles validées sont des références positives.
+  Les zones sans annotation sont de statut **inconnu**, et non négatif.
+- Les candidats non associés ne sont **pas des faux positifs attestés** ;
+  il est impossible de déduire la précision, la spécificité, le taux de
+  faux positifs ou le rejet réel des échos avec ces seules références.
+- Le nombre total de candidats reste une information sur la charge
+  de traitement, mais **n'influence pas le score ni l'admissibilité**
+  des essais. Une baisse du nombre de candidats n'est jamais un
+  indicateur de meilleure détection.
 - Les tolérances géométriques sont encore **non calibrées** ; le
   classement est provisoire.
 - Aucune modification de Git, des sources, des annotations originales,
@@ -84,13 +92,15 @@ Un essai peut être conservé dans les rapports mais **rejeté du classement**
 s'il entraîne une régression supérieure à 2 points de rappel sur les
 chirps à SNR ≥ 35 dB, une baisse du score de suivi pondéré supérieure
 à 2 points, une hausse supérieure à 20 % de l'erreur géométrique
-moyenne ou une explosion du volume de candidats (>2,5 fois la baseline).
+moyenne. Le nombre de candidats n'est pas un critère de rejet
+ou de promotion : la calibration ne comprend pas de négatifs exhaustifs.
 Ces limites sont des garde-fous de campagne et non des seuils scientifiques
 universels.
 
 Les essais admis sont classés avec une combinaison fixe de rappel brut,
-rappel pondéré et score de suivi pondéré. Le nombre de candidats sert
-uniquement de contrôle de coût, jamais de précision de détection.
+rappel pondéré et score de suivi pondéré. Le nombre de candidats est
+reporté à titre descriptif pour de futures mesures de coût CPU/mémoire ;
+il ne constitue ni un score de précision, ni une pénalité de classement.
 Chaque décision et son motif sont enregistrés.
 
 ## Résultats
