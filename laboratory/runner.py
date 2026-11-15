@@ -25,6 +25,7 @@ import traceback
 from .dataset import (collect_annotations, fingerprint_inputs, stable_hash,
                       sha256_file, write_manifest)
 from .aggregation import summarize_results
+from .frozen_dataset import collect_frozen_dataset
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -167,7 +168,8 @@ def remove_excluded_references(records: dict[str, dict]) -> tuple[dict[str, dict
     return filtered, excluded
 
 
-def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
+def run(*, annotations: Path | None = None, wav_dir: Path | None = None,
+        dataset: Path | None = None, out: Path, workers: int = 4,
         max_files: int | None = None, options: dict | None = None,
         use_cache: bool = True,
         processing_root: Path = DEFAULT_PROCESSING_ROOT) -> dict:
@@ -206,10 +208,24 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
                 "bat_full_spectrum_processing checkout is outdated: "
                 "run 'git pull origin main' in that repository before "
                 "enabling square_normals_v1")
-    wav_dir = Path(wav_dir).resolve()
     out = Path(out).resolve()
+    if dataset is not None:
+        if annotations is not None or wav_dir is not None:
+            raise ValueError("--dataset cannot be combined with --annotations/--wav-dir")
+        dataset_root = Path(dataset).resolve()
+        if out == dataset_root or out.is_relative_to(dataset_root):
+            raise ValueError("Benchmark output must be outside the frozen dataset")
+        records, dataset_provenance = collect_frozen_dataset(dataset_root)
+        wav_dir = dataset_root
+        annotation_description = dataset_root / "manifest.csv"
+    else:
+        if annotations is None or wav_dir is None:
+            raise ValueError("Use --dataset or both --annotations and --wav-dir")
+        wav_dir = Path(wav_dir).resolve()
+        records = collect_annotations(Path(annotations), wav_dir)
+        dataset_provenance = None
+        annotation_description = Path(annotations).resolve()
     out.mkdir(parents=True, exist_ok=True)
-    records = collect_annotations(Path(annotations), wav_dir)
     records, excluded_count = remove_excluded_references(records)
     if max_files is not None:
         records = dict(list(records.items())[:max_files])
@@ -289,7 +305,8 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
         "geometry_distance_unit": ("kHz_eq" if params["geometry_mode"] == "square_normals_v1"
                                    else "kHz_vertical"),
         "geometric_tolerances_calibrated": False,
-        "annotations": str(Path(annotations).resolve()), "wav_dir": str(wav_dir),
+        "annotations": str(annotation_description), "wav_dir": str(wav_dir),
+        "frozen_dataset": dataset_provenance,
         "options": params, "workers": workers,
         "files_from_cache": cache_count,
         "duration_s": duration,
@@ -316,9 +333,13 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--annotations", type=Path, required=True,
-                        help="Single JSON or directory with annotation JSONs")
-    parser.add_argument("--wav-dir", type=Path, required=True)
+    input_mode = parser.add_mutually_exclusive_group(required=True)
+    input_mode.add_argument("--dataset", type=Path,
+                            help="Frozen dataset-v1 manifest, calibration only")
+    input_mode.add_argument("--annotations", type=Path,
+                            help="Single JSON or directory with annotation JSONs")
+    parser.add_argument("--wav-dir", type=Path,
+                        help="Required with --annotations; not used with --dataset")
     parser.add_argument("--processing-root", type=Path,
                         default=DEFAULT_PROCESSING_ROOT,
                         help="External bat_full_spectrum_processing checkout")
@@ -334,7 +355,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-echo-trim", action="store_true")
     parser.add_argument("--no-cache", action="store_true")
     args = parser.parse_args(argv)
+    if args.dataset is None and args.wav_dir is None:
+        parser.error("--wav-dir is required with --annotations")
+    if args.dataset is not None and args.wav_dir is not None:
+        parser.error("--wav-dir must not be used with --dataset")
     report = run(annotations=args.annotations, wav_dir=args.wav_dir,
+                 dataset=args.dataset,
                  out=args.out, workers=args.workers, max_files=args.max_files,
                  use_cache=not args.no_cache,
                  processing_root=args.processing_root,
