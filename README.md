@@ -60,7 +60,27 @@ Pour reproduire un ancien benchmark vertical, fournir
 Les rapports portent le champ `metadata.scoring_protocol` et les résultats
 anciens ne sont **pas directement comparables** aux nouveaux.
 
-### Premier essai (3 WAV)
+### Benchmark initial sur le corpus validé (calibration uniquement)
+
+Le mode `--dataset` lit directement `dataset-v1/manifest.csv`, vérifie
+les empreintes WAV/JSON et ne charge **aucun WAV du jeu test** :
+
+```powershell
+python -m laboratory `
+  --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" `
+  --out "C:\Users\damien\Documents\Python\Python-data\baseline-v1" `
+  --workers 4 `
+  --max-files 3
+```
+
+Retirer `--max-files` pour la campagne complète, de préférence dans
+un nouveau répertoire de résultats. Voir le
+[guide du benchmark initial](docs/BASELINE_INITIALE.md).
+Cette première baseline utilise le connecteur de
+`bat_full_spectrum_processing`, qui n'est pas nécessairement la version
+du détecteur actuellement intégrée à Bat-Acoustic-Analyser.
+
+### Premier essai (3 WAV) — mode historique
 
 ```powershell
 .\.venv\Scripts\python.exe -m laboratory `
