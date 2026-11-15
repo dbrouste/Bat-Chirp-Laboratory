@@ -262,7 +262,8 @@ def _export(output: Path, state: dict) -> None:
         "test_partition_accessed": False,
         "annotations_exhaustive": False,
         "precision_and_false_positive_rate_measurable": False,
-        "reviewed_no_chirp_false_candidate_metrics_measurable": True,
+        "reviewed_no_chirp_false_candidate_metrics_measurable": bool(
+            baseline and baseline["metrics"].get("negative_wavs", 0) > 0),
         "note": (
             "All rankings are calibration-only. This agent searches parameter "
             "settings without modifying detector source or dataset. An unmatched "
@@ -327,6 +328,8 @@ def _export(output: Path, state: dict) -> None:
                str(trial.get("score", "")),
                f'{100 * metric["recall"]:.1f}%' if metric else "",
                f'{100 * metric["weighted_full_pipeline"]:.1f}%' if metric else "",
+               (f'{metric.get("negative_alarm_wavs", 0)}/'
+                f'{metric.get("negative_wavs", 0)}' if metric and metric.get("negative_wavs", 0) else "—"),
                str(trial["options"])]
         table.append("<tr>" + "".join(
             "<td>" + html.escape(v) + "</td>" for v in row
@@ -344,7 +347,8 @@ def _export(output: Path, state: dict) -> None:
               + html.escape(str(selected["options"]) if selected else "indisponible")
               + "</p><table><tr><th>Étape</th><th>État</th>"
               "<th>Règle</th><th>Score</th><th>Rappel</th>"
-              "<th>Suivi pondéré</th><th>Paramètres</th></tr>"
+              "<th>Suivi pondéré</th><th>WAV no_chirp avec alertes</th>"
+              "<th>Paramètres</th></tr>"
               + "".join(table) + "</table></html>")
     (output / "agent_report.html").write_text(markup, encoding="utf-8")
 
