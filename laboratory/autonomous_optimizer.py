@@ -32,7 +32,8 @@ DEFAULTS = {
 COLUMNS = ("trial", "stage", "eligible", "reason", "score", "recall",
            "weighted_recall", "full_pipeline", "weighted_full_pipeline",
            "high_snr_recall", "geometry_khz_eq", "coverage", "candidates",
-           "annotated", "status", "parameters", "report_path")
+           "annotated", "negative_wavs", "negative_alarm_wavs",
+           "negative_candidates", "status", "parameters", "report_path")
 
 
 def _laboratory_fingerprint() -> str:
@@ -83,6 +84,7 @@ def metrics(report: dict) -> dict:
     if report["metadata"]["status"] != "complete" or refs <= 0:
         raise ValueError("Incomplete benchmark or no validated manual chirps")
     high = totals["by_snr"]["high_35_db_or_more"]
+    neg = totals.get("reviewed_no_chirp") or {}
     return {
         "annotated": refs,
         "matched": int(totals["matched"]),
@@ -98,6 +100,10 @@ def metrics(report: dict) -> dict:
         "geometry_khz_eq": totals.get("mean_geometric_error_khz_eq"),
         "coverage": totals.get("mean_geometric_coverage_fraction"),
         "candidates": int(totals["candidates"]),
+        "negative_wavs": int(neg.get("wav_count", 0)),
+        "negative_alarm_wavs": int(neg.get("wavs_with_candidate_alert", 0)),
+        "negative_candidates": int(neg.get("candidate_alerts", 0)),
+        "negative_false_alarm_fraction": neg.get("wav_false_alarm_fraction"),
     }
 
 
@@ -107,6 +113,18 @@ def judge(candidate: dict, baseline: dict) -> tuple[bool, str, float]:
         return False, "reference count changed", -1.0
     if candidate["high_snr_count"] != baseline["high_snr_count"]:
         return False, "high SNR reference count changed", -1.0
+    neg_count = int(baseline.get("negative_wavs", 0))
+    if int(candidate.get("negative_wavs", 0)) != neg_count:
+        return False, "reviewed negative cohort changed", -1.0
+    if neg_count:
+        if int(candidate.get("negative_alarm_wavs", 0)) > int(
+            baseline.get("negative_alarm_wavs", 0)
+        ):
+            return False, "more no_chirp WAVs trigger detector candidates", -1.0
+        if int(candidate.get("negative_candidates", 0)) > int(
+            baseline.get("negative_candidates", 0)
+        ):
+            return False, "more detector candidates in reviewed no_chirp WAVs", -1.0
     if candidate["high_snr_recall"] is None:
         return False, "high SNR references unavailable", -1.0
     if candidate["high_snr_recall"] < baseline["high_snr_recall"] - 0.02:
@@ -128,6 +146,14 @@ def judge(candidate: dict, baseline: dict) -> tuple[bool, str, float]:
     score = (0.15 * candidate["recall"]
              + 0.40 * candidate["weighted_recall"]
              + 0.45 * candidate["weighted_full_pipeline"])
+    if neg_count:
+        # Only explicitly reviewed negative WAVs can inform false alarms.
+        score -= 0.10 * (
+            int(candidate.get("negative_alarm_wavs", 0)) / neg_count
+        )
+        score -= 0.01 * min(
+            2.0, int(candidate.get("negative_candidates", 0)) / neg_count
+        )
     return True, "valid", round(score, 6)
 
 
@@ -236,12 +262,15 @@ def _export(output: Path, state: dict) -> None:
         "test_partition_accessed": False,
         "annotations_exhaustive": False,
         "precision_and_false_positive_rate_measurable": False,
+        "reviewed_no_chirp_false_candidate_metrics_measurable": True,
         "note": (
             "All rankings are calibration-only. This agent searches parameter "
             "settings without modifying detector source or dataset. An unmatched "
             "candidate is NOT evidence of a false positive, even inside "
             "WAVs with manual annotations: annotations are not exhaustive. "
-            "Candidate counts are diagnostic only and never impact ranking. "
+            "Counts on partially annotated positive WAVs never impact ranking. "
+            "Explicit reviewed no_chirp WAVs supply separate false candidate "
+            "alarm metrics and non-regression gates if available. "
             "Geometric SNR tolerances remain uncalibrated. "
             "Do not deploy automatically."
         ),
@@ -268,6 +297,9 @@ def _export(output: Path, state: dict) -> None:
                 "coverage": m.get("coverage", ""),
                 "candidates": m.get("candidates", ""),
                 "annotated": m.get("annotated", ""),
+                "negative_wavs": m.get("negative_wavs", ""),
+                "negative_alarm_wavs": m.get("negative_alarm_wavs", ""),
+                "negative_candidates": m.get("negative_candidates", ""),
                 "status": t["status"],
                 "parameters": json.dumps(t["options"], ensure_ascii=False),
                 "report_path": t.get("report_path", ""),
@@ -390,7 +422,8 @@ def run_agent(*, dataset: Path, out: Path, processing_root: Path,
             try:
                 report = runner.run(
                     dataset=dataset, out=trial_dir, workers=workers,
-                    processing_root=processing_root, options=options)
+                    processing_root=processing_root, options=options,
+                    include_reviewed_negatives=True)
                 measure = metrics(report)
                 if stage == "baseline":
                     eligible, reason, score = judge(measure, measure)
