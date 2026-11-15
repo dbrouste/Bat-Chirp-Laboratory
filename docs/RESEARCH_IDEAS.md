@@ -7,6 +7,28 @@ sont **à tester**, pas encore des lois imposées à l'algorithme.
 Le catalogue structuré correspondant est :
 [`experiments/ideas.yaml`](../experiments/ideas.yaml).
 
+## Convention fondamentale : annotations positives non exhaustives
+
+Même dans les WAV où des chirps ont été annotés manuellement, **une partie
+des véritables chirps reste non annotée**. Ainsi, le silence du JSON ne
+constitue pas un label `absence de chirp`.
+
+Conséquences pour les campagnes Codex :
+
+- Pour H01 à H04, le benchmark actuel mesure uniquement le **rappel des
+  références positives annotées** et la qualité de leurs trajectoires.
+- Le nombre de candidats non associés n'est pas un nombre de faux positifs
+  et **ne doit ni réduire le score ni entraîner le rejet d'une expérience**.
+- On peut expérimenter la suppression des échos, mais sans étiquettes
+  spécifiques on ne peut pas **prouver** le nombre d'échos éliminés ni
+  celui des vrais chirps non annotés perdus.
+- Les cas non annotés sont **inconnus** : ils peuvent contenir chirps,
+  harmoniques, échos ou bruit. Ne jamais les utiliser comme négatifs
+  automatiques.
+- De futurs labels ciblés permettent une métrique supplémentaire, mais
+  n'imposent pas de recréer tout le moteur de benchmark ni d'annoter
+  exhaustivement tous les WAV pour poursuivre les essais positifs.
+
 ## Priorité 1 — Ne pas détecter les échos comme des chirps (H04)
 
 **Question :** peut-on identifier la copie retardée d'un chirp direct
