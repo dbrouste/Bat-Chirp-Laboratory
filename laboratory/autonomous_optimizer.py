@@ -35,6 +35,26 @@ COLUMNS = ("trial", "stage", "eligible", "reason", "score", "recall",
            "annotated", "status", "parameters", "report_path")
 
 
+def _laboratory_fingerprint() -> str:
+    """Fingerprint the benchmark aggregation and the agent's ranking policy."""
+    root = Path(__file__).resolve().parents[1]
+    files = (
+        "laboratory/autonomous_optimizer.py",
+        "laboratory/runner.py",
+        "laboratory/aggregation.py",
+        "laboratory/frozen_dataset.py",
+        "laboratory/report.py",
+        "chirp_geometry/__init__.py",
+    )
+    hashes = {}
+    for name in files:
+        source = root / name
+        hashes[name] = hashlib.sha256(source.read_bytes()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(hashes, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+
 def _id(options: dict) -> str:
     raw = json.dumps(options, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode()).hexdigest()[:14]
@@ -207,6 +227,7 @@ def _export(output: Path, state: dict) -> None:
         "schema": SCHEMA,
         "dataset_provenance": state["dataset_provenance"],
         "algorithm_fingerprint": state["algorithm_fingerprint"],
+        "laboratory_fingerprint": state["laboratory_fingerprint"],
         "started_utc": state["started_utc"],
         "updated_utc": datetime.now(timezone.utc).isoformat(),
         "trial_count": len(trials),
@@ -314,6 +335,7 @@ def run_agent(*, dataset: Path, out: Path, processing_root: Path,
     # Read only the CALIBRATION manifest and verify all frozen hashes.
     _, provenance = collect_frozen_dataset(dataset, partition="calibration")
     algorithm_fingerprint = runner.code_fingerprint(processing_root)
+    laboratory_fingerprint = _laboratory_fingerprint()
     out.mkdir(parents=True, exist_ok=True)
     lock = out / ".agent.lock"
     try:
@@ -329,7 +351,8 @@ def run_agent(*, dataset: Path, out: Path, processing_root: Path,
             state = json.loads(state_path.read_text(encoding="utf-8"))
             if (state.get("schema") != SCHEMA
                     or state.get("dataset_provenance") != provenance
-                    or state.get("algorithm_fingerprint") != algorithm_fingerprint):
+                    or state.get("algorithm_fingerprint") != algorithm_fingerprint
+                    or state.get("laboratory_fingerprint") != laboratory_fingerprint):
                 raise ValueError(
                     "Agent state no longer matches dataset/algorithm. "
                     "Start a NEW --out directory; never mix baselines.")
@@ -338,6 +361,7 @@ def run_agent(*, dataset: Path, out: Path, processing_root: Path,
                 "schema": SCHEMA,
                 "dataset_provenance": provenance,
                 "algorithm_fingerprint": algorithm_fingerprint,
+                "laboratory_fingerprint": laboratory_fingerprint,
                 "started_utc": datetime.now(timezone.utc).isoformat(),
                 "trials": [],
             }
