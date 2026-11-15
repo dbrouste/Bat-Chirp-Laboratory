@@ -41,6 +41,21 @@ python -m pip install -r requirements.txt
 python -m pytest -q tests/test_frozen_dataset.py tests/test_laboratory.py
 ```
 
+## Sélection des fichiers
+
+Le corpus figé contient aussi des WAV sans annotation manuelle validée.
+Pour éviter un benchmark sans dénominateur, le mode `--dataset` ignore
+désormais ces WAV **avant** de limiter le nombre avec `--max-files`.
+Ainsi, `--max-files 3` sélectionne trois WAV de calibration comportant
+au moins une référence manuelle validée et non exclue. Le nombre de WAV
+écartés apparaît dans `metadata.frozen_dataset.wav_without_reference_skipped`.
+Cette sélection ne modifie ni les WAV, ni les JSON, ni le manifeste.
+
+Les WAV sans référence ne sont **pas** comptés comme négatifs : la
+présence de candidats acoustiques dans ces fichiers ne démontre pas
+qu'il s'agit de faux positifs. Une campagne de précision nécessitera
+des plages temporelles annotées exhaustivement.
+
 ## 1. Exécution de validation : trois WAV
 
 ```powershell
