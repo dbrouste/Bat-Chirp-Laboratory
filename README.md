@@ -1,3 +1,20 @@
+## Agent local d'optimisation du détecteur
+
+Pour éviter les allers-retours manuels entre exécutions, la version
+`develop` contient un agent d'expérimentation **local**, borné et
+reproductible. Il enchaîne les benchmarks sur **calibration seulement**,
+compare les variantes et propose une configuration, sans modifier le
+détecteur ou le corpus :
+
+- Sous Windows : double-cliquer sur `tools\run_agent_windows.cmd`.
+- En ligne de commande : `python -m laboratory.autonomous_optimizer --dataset CHEMIN_DATASET --out CHEMIN_SORTIE --workers 4`.
+- Résultats : `agent_report.html`, `leaderboard.csv` et `priority_cases.csv`.
+
+Lire le [guide agent local](docs/AGENT_LOCAL.md) pour la reprise
+automatique des campagnes et les garde-fous scientifiques. L'agent V1
+cherche des paramètres ; il n'édite pas automatiquement le code avec une IA.
+
+
 # Bat-Chirp-Laboratory
 
 Laboratoire indépendant pour évaluer et, à terme, améliorer automatiquement la
