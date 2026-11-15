@@ -29,10 +29,15 @@ automatiques ne seront jamais fusionnées ni déployées directement.
 - Les candidats non associés ne sont **pas des faux positifs attestés** ;
   il est impossible de déduire la précision, la spécificité, le taux de
   faux positifs ou le rejet réel des échos avec ces seules références.
-- Le nombre total de candidats reste une information sur la charge
-  de traitement, mais **n'influence pas le score ni l'admissibilité**
-  des essais. Une baisse du nombre de candidats n'est jamais un
-  indicateur de meilleure détection.
+- Le nombre total de candidats sur les WAV **positifs partiellement
+  annotés** reste une information sur la charge de traitement et
+  n'influence pas directement le score. Une baisse ne prouve pas
+  une meilleure détection.
+- Les WAV explicitement classés `review_status=no_chirp` constituent
+  un **sous-corpus négatif** : l'agent compte les WAV déclenchant au
+  moins un candidat et le nombre de candidats sur ces seuls WAV.
+  Une régression sur ce sous-corpus bloque la promotion de l'essai.
+  Voir [REVIEWED_NEGATIVES.md](REVIEWED_NEGATIVES.md).
 - Les tolérances géométriques sont encore **non calibrées** ; le
   classement est provisoire.
 - Aucune modification de Git, des sources, des annotations originales,
@@ -92,15 +97,17 @@ Un essai peut être conservé dans les rapports mais **rejeté du classement**
 s'il entraîne une régression supérieure à 2 points de rappel sur les
 chirps à SNR ≥ 35 dB, une baisse du score de suivi pondéré supérieure
 à 2 points, une hausse supérieure à 20 % de l'erreur géométrique
-moyenne. Le nombre de candidats n'est pas un critère de rejet
-ou de promotion : la calibration ne comprend pas de négatifs exhaustifs.
+moyenne. **Quand des WAV `no_chirp` existent dans la calibration**,
+une hausse du nombre de WAV négatifs déclenchant une alerte ou du
+nombre de candidats sur ces seuls WAV est un motif de rejet.
 Ces limites sont des garde-fous de campagne et non des seuils scientifiques
 universels.
 
 Les essais admis sont classés avec une combinaison fixe de rappel brut,
-rappel pondéré et score de suivi pondéré. Le nombre de candidats est
-reporté à titre descriptif pour de futures mesures de coût CPU/mémoire ;
-il ne constitue ni un score de précision, ni une pénalité de classement.
+rappel pondéré et score de suivi pondéré. Les fausses alertes sur
+les WAV **explicitement négatifs** contribuent au score si cette cohorte
+existe. Les candidats sur les positifs partiellement annotés sont
+simplement descriptifs.
 Chaque décision et son motif sont enregistrés.
 
 ## Résultats
@@ -113,6 +120,8 @@ Sous le répertoire de sortie :
 - priority_cases.csv : chirps manqués à fort SNR, courbes très différentes,
   couverture faible et erreurs d'extrémités ;
 - agent_state.json : état de reprise de la campagne ;
+- `totals.reviewed_no_chirp` dans chaque rapport : fausses alertes
+  candidates sur les WAV négatifs revus ;
 - trials/<id>/report.json : rapports complets de chaque essai ;
 - trials/<id>/experiments.sqlite : historique détaillé du moteur de benchmark ;
 - trials/<id>/cache/ : cache de ce moteur pour l'essai.
