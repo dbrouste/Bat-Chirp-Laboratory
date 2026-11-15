@@ -60,14 +60,14 @@ Après avoir récupéré la branche develop et installé les dépendances :
 Le script utilise par défaut :
 
     %USERPROFILE%\Documents\Python\Python-data\dataset-v1
-    %USERPROFILE%\Documents\Python\Python-data\chirp-agent-v1
+    %USERPROFILE%\Documents\Python\Python-data\chirp-agent-v2
 
 Si les répertoires sont différents, définir les variables d'environnement
 CHIRP_DATASET et CHIRP_AGENT_OUTPUT, ou lancer directement :
 
     python -m laboratory.autonomous_optimizer ^
       --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" ^
-      --out "C:\Users\damien\Documents\Python\Python-data\chirp-agent-v1" ^
+      --out "C:\Users\damien\Documents\Python\Python-data\chirp-agent-v2" ^
       --workers 4 --max-total 11
 
 Pour un premier essai court (réalisé ensuite automatiquement sans intervention),
