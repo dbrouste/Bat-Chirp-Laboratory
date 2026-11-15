@@ -10,20 +10,25 @@ from laboratory.frozen_dataset import collect_frozen_dataset
 from laboratory import runner
 
 
-def _make_dataset(tmp_path):
+def _make_dataset(tmp_path, *, include_unannotated=False):
     source = tmp_path / "originals"
     for night, name in (("night_a", "same.wav"), ("night_b", "same.wav")):
         folder = source / night
         folder.mkdir(parents=True)
         (folder / name).write_bytes(f"audio-{night}".encode())
+        files = {name: {"chirps": [{
+            "chirp_id": 1, "source": "manual", "status": "validated",
+            "points": [{"t_ms": 1, "f_khz": 80},
+                       {"t_ms": 3, "f_khz": 60}],
+        }]}}
+        if include_unannotated:
+            # Sorts ahead of the human-reviewed WAV in manifest.csv.
+            (folder / "000_empty.wav").write_bytes(b"unannotated")
+            files["000_empty.wav"] = {"chirps": []}
         (folder / f"{night}.json").write_text(json.dumps({
             "schema_version": 1,
             "units": {"time": "ms", "frequency": "kHz"},
-            "files": {name: {"chirps": [{
-                "chirp_id": 1, "source": "manual", "status": "validated",
-                "points": [{"t_ms": 1, "f_khz": 80},
-                           {"t_ms": 3, "f_khz": 60}],
-            }]}}
+            "files": files,
         }), encoding="utf-8")
     dataset = tmp_path / "dataset-v1"
     build_dataset(source, dataset, seed=3)
@@ -116,3 +121,39 @@ def test_baseline_runner_uses_manifest_and_is_read_only(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="outside"):
         runner.run(dataset=dataset, out=dataset / "results",
                    workers=1, processing_root=external)
+
+
+def test_small_frozen_baseline_skips_wavs_without_manual_reference(tmp_path, monkeypatch):
+    dataset, rows = _make_dataset(tmp_path, include_unannotated=True)
+    calibration = [r for r in rows if r["partition"] == "calibration"]
+    assert any(Path(r["dataset_wav"]).name == "000_empty.wav" for r in calibration)
+
+    external = tmp_path / "external"
+    (external / "bat_analysis").mkdir(parents=True)
+    (external / "benchmark").mkdir()
+    (external / "bat_analysis" / "detection.py").write_text("# fake detector\\n")
+    (external / "benchmark" / "reassignment_detector_seeds.py").write_text(
+        "def evaluate(*args, geometry_mode=None, **kwargs): pass\\n")
+    invoked = []
+
+    def fake_worker(name, record, wav_root, options, processing_root):
+        assert any(c.get("source") == "manual" and c.get("status") == "validated"
+                   for c in record["chirps"])
+        invoked.append(name)
+        return {"file": name, "elapsed_s": .01,
+                "per_file": [{"file": name, "annotated": 1, "matched": 0,
+                              "candidates": 0, "tracking_succeeded": 0}],
+                "details": [{"file": name, "chirp_id": 1,
+                             "detection_importance_weight": 1,
+                             "snr_max_db": 30, "detector_matched": False,
+                             "tracking_success": False}]}
+    monkeypatch.setattr(runner, "_worker", fake_worker)
+    monkeypatch.setattr(runner, "code_fingerprint", lambda _root: "baseline-v1")
+    report = runner.run(dataset=dataset, out=tmp_path / "baseline",
+                        max_files=1, workers=1, processing_root=external)
+    assert len(invoked) == 1
+    assert Path(invoked[0]).name == "same.wav"
+    provenance = report["metadata"]["frozen_dataset"]
+    assert provenance["wav_without_reference_skipped"] == 1
+    assert provenance["wav_with_reference"] == 1
+    assert report["totals"]["annotated"] == 1
