@@ -119,13 +119,16 @@ def _run_codex(worktree: Path, prompt: str, log: Path, timeout: int) -> None:
     # No shell, no extra writable directories and no approval escalation.
     # The CLI's own API connection is needed for its model, but its tool
     # commands run inside workspace-write sandbox.
+    # Do not pass local corpus locations to Codex as environment variables.
+    model_env = {key: val for key, val in os.environ.items()
+                 if not key.upper().startswith("CHIRP_")}
     try:
         result = subprocess.run(
             [cli, "exec", "--sandbox", "workspace-write",
              "--ask-for-approval", "never", "-"],
             input=prompt, capture_output=True, text=True,
             cwd=worktree, encoding="utf-8", errors="replace",
-            check=False, timeout=timeout)
+            env=model_env, check=False, timeout=timeout)
     except subprocess.TimeoutExpired as exc:
         log.write_text("Codex timed out.\n", encoding="utf-8")
         raise RuntimeError("Codex execution timed out") from exc
