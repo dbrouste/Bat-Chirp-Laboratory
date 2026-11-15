@@ -113,6 +113,46 @@ def test_unmatched_candidate_count_does_not_change_quality_score_or_eligibility(
     assert score1 == score2
 
 
+def test_only_reviewed_negative_alarms_are_penalized():
+    base = dict(_metric(), negative_wavs=10,
+                negative_alarm_wavs=3, negative_candidates=5)
+    better = dict(base, negative_alarm_wavs=2, negative_candidates=3)
+    worse = dict(base, negative_alarm_wavs=4, negative_candidates=6)
+    okay, reason, old_score = agent.judge(base, base)
+    assert okay and reason == "valid"
+    okay, reason, new_score = agent.judge(better, base)
+    assert okay and new_score > old_score
+    okay, reason, _ = agent.judge(worse, base)
+    assert not okay and "no_chirp" in reason
+
+
+def test_reviewed_negative_candidate_increase_is_rejected():
+    base = dict(_metric(), negative_wavs=3,
+                negative_alarm_wavs=2, negative_candidates=4)
+    one_extra_alarm = dict(base, negative_candidates=5)
+    okay, reason, _ = agent.judge(one_extra_alarm, base)
+    assert not okay
+    assert "more detector candidates" in reason
+
+
+def test_mismatched_reviewed_negative_cohort_is_not_comparable():
+    base = dict(_metric(), negative_wavs=2,
+                negative_alarm_wavs=0, negative_candidates=0)
+    candidate = dict(base, negative_wavs=1)
+    okay, reason, _ = agent.judge(candidate, base)
+    assert not okay
+    assert "cohort changed" in reason
+
+
+def test_candidate_count_on_partially_annotated_wavs_still_does_not_score():
+    base = dict(_metric(), negative_wavs=5,
+                negative_alarm_wavs=2, negative_candidates=3)
+    more_on_unreviewed = dict(base, candidates=10000)
+    okay, _, score_a = agent.judge(base, base)
+    okay2, _, score_b = agent.judge(more_on_unreviewed, base)
+    assert okay and okay2 and score_a == score_b
+
+
 def test_candidate_count_alone_cannot_be_an_optimization():
     base = _metric()
     identical_with_less_candidates = dict(base, candidates=10)
@@ -131,6 +171,7 @@ def test_agent_autoresumes_with_no_repeated_trials(tmp_path, monkeypatch):
     assert partial["new_trials_this_invocation"] == 2
     assert partial["trials_total"] == 2
     assert calls[0]["options"] == agent.DEFAULTS
+    assert all(call["include_reviewed_negatives"] is True for call in calls)
     assert calls[1]["options"]["v4_general_min_width_ms"] == 1.0
     assert all(p == "calibration" for p in partitions)
     assert all(c["max_files"] is None if "max_files" in c else True
