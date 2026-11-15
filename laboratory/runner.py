@@ -227,6 +227,25 @@ def run(*, annotations: Path | None = None, wav_dir: Path | None = None,
         annotation_description = Path(annotations).resolve()
     out.mkdir(parents=True, exist_ok=True)
     records, excluded_count = remove_excluded_references(records)
+    # With a frozen corpus, this is a supervised benchmark: recordings
+    # without validated human references are not negatives. Do not expend
+    # compute on them or score their candidates as false positives.
+    if dataset_provenance is not None:
+        before = len(records)
+        records = {
+            name: record for name, record in records.items()
+            if any(
+                isinstance(chirp, dict)
+                and chirp.get("source") == "manual"
+                and chirp.get("status") == "validated"
+                for chirp in record.get("chirps", [])
+            )
+        }
+        dataset_provenance["wav_without_reference_skipped"] = before - len(records)
+        dataset_provenance["wav_with_reference"] = len(records)
+        if not records:
+            raise ValueError(
+                "No validated manual chirps in the frozen calibration partition")
     if max_files is not None:
         records = dict(list(records.items())[:max_files])
     inputs = fingerprint_inputs(records, wav_dir)
