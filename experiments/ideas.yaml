@@ -1,0 +1,163 @@
+# Hypothèses scientifiques à explorer par le laboratoire
+#
+# Backlog humain et scientifique (non encore interprété par code_agent.py).
+# Aucun de ces items n'autorise à modifier le corpus, à utiliser le split
+# test pour optimiser, ni à considérer des signaux non annotés comme négatifs.
+#
+# L'état "needs_benchmark" signifie que le protocole de score n'existe pas
+# encore : l'agent ne doit pas lancer un essai et déclarer un gagnant sur le
+# seul rappel global.
+
+schema: chirp_research_ideas_v1
+
+global_constraints:
+  dataset_partition: calibration
+  protect_manual_annotations: true
+  test_partition_for_optimization: false
+  no_automatic_merge_or_deployment: true
+  no_unmatched_candidate_as_confirmed_false_positive: true
+  measure_strong_snr_regression: true
+  separate_detection_from_tracking_and_classification: true
+  require_human_review_of_selected_cases: true
+
+ideas:
+  - id: H01
+    title: "Recherche ciblée des harmoniques à partir d'un chirp parent"
+    priority: high
+    status: needs_benchmark
+    hypothesis: >-
+      Une fois une trajectoire de chirp détectée, les harmoniques
+      potentielles ont une localisation temps-fréquence prédictible.
+      Elles peuvent être plus courtes et plus faibles : une recherche
+      conditionnelle doit donc utiliser des seuils propres, distincts
+      de la détection initiale de chirps.
+    questions:
+      - "Les harmoniques présentent-elles bien une durée et une puissance plus faibles dans les annotations existantes ?"
+      - "Quels rapports de fréquence (2f, 3f...) restent observables selon le temps ?"
+      - "Une harmonique peut-elle être détectée sans créer un second passage biologique ?"
+    experiments:
+      - "Construire un banc de paires parent-harmonique validées manuellement."
+      - "Prédire les fenêtres temps/fréquence depuis la trajectoire du parent, en laissant une tolérance mesurée."
+      - "Comparer recherche ciblée multi-seuils et détecteur général, à échantillons identiques."
+      - "Tester les cas d'harmoniques tronquées, chevauchées et absentes."
+    metrics_needed:
+      - "Rappel sur harmoniques vérifiées"
+      - "Précision sur zones explicitement validées sans harmonique"
+      - "Erreur temps-fréquence du lien parent-harmonique"
+      - "Taux de confusion harmonique / chirp indépendant / écho"
+    candidate_modules:
+      - "bat_analysis/harmonics.py"
+      - "bat_analysis/reassignment_tracking.py"
+    depends_on:
+      - "Paires parent-harmonique positives et zones négatives revues"
+    risks:
+      - "Une harmonique absente ne doit pas être créée artificiellement."
+      - "Ne pas compter une harmonique comme passage indépendant."
+      - "Ne pas dégrader la détection du chirp parent."
+
+  - id: H02
+    title: "Terminaisons asymétriques : bruit ambiant à gauche, échos à droite"
+    priority: highest
+    status: needs_benchmark
+    hypothesis: >-
+      Les deux extrémités d'un chirp peuvent présenter des contextes
+      acoustiques différents. L'hypothèse de terrain est une fin plus
+      lisible dans le bruit ambiant sur la gauche, et à droite une
+      confusion avec l'écho propre du chirp. La direction des axes
+      et le sens physique doivent être vérifiés sur les enregistrements.
+    questions:
+      - "Quel côté est temporellement antérieur/postérieur sur la vue utilisée ?"
+      - "L'écho est-il retardé et éventuellement déformé par rapport au signal direct ?"
+      - "Une régularisation asymétrique réduit-elle la poursuite d'écho ?"
+      - "En présence de branches, la continuité descendante aide-t-elle sans exclure des chirps naturels atypiques ?"
+    experiments:
+      - "Séparer les erreurs de début et de fin, par côté et par SNR."
+      - "Comparer seuils d'arrêt indépendants à gauche et à droite."
+      - "Évaluer des pénalités de changement de pente, priorité de descente et continuité temporelle comme hypothèses souples."
+      - "Tester une estimation de copie retardée d'écho puis son atténuation, en protégeant le signal direct."
+      - "Comparer trajectoires complètes, trajectoires raccourcies et trajectoires poursuivant l'écho."
+    metrics_needed:
+      - "Erreur de début et erreur de fin séparées"
+      - "Couverture et erreur géométrique par tiers de trajectoire"
+      - "Taux d'accrochage à un écho, vérifié manuellement"
+      - "Taux de tronquage abusif et de perte d'une vraie fin descendante"
+    candidate_modules:
+      - "bat_analysis/ridge_completion.py"
+      - "bat_analysis/ridge_confidence.py"
+      - "bat_analysis/reassignment_tracking.py"
+      - "bat_analysis/endpoint_refinement.py"
+    depends_on:
+      - "Jeu de chirps directs/échos appariés et délimitations visuelles"
+      - "Vérification des conventions gauche/droite"
+    risks:
+      - "Une trajectoire descendante n'est pas toujours la bonne ; utiliser un a priori, pas une règle absolue."
+      - "L'atténuation d'écho ne doit pas effacer un chirp ultérieur réel."
+      - "Ne pas modifier les annotations originales."
+
+  - id: H03
+    title: "A priori temporel fondé sur la régularité du rythme"
+    priority: medium
+    status: needs_benchmark
+    hypothesis: >-
+      Pour un individu unique, les intervalles entre chirps suivent
+      souvent un rythme local ; ce rythme peut accélérer ou ralentir.
+      Il est possible d'utiliser une prédiction probabiliste de la
+      prochaine position temporelle pour aider la détection.
+    questions:
+      - "Quelle variabilité inter-chirp existe selon les séquences et les SNR ?"
+      - "Peut-on modéliser l'évolution graduelle du rythme sans imposer une périodicité rigide ?"
+      - "Comment reconnaître une pause, une transition ou plusieurs individus ?"
+    experiments:
+      - "Mesurer les intervalles successifs de séries manuellement associées au même individu."
+      - "Comparer une prédiction locale robuste, un modèle de tempo évolutif et l'absence d'a priori."
+      - "Appliquer le rythme uniquement comme bonus de recherche sur des indices acoustiques présents."
+      - "Simuler accélération, décélération, suppression de chirps, pauses, et deux individus."
+    metrics_needed:
+      - "Rappel supplémentaire sur chirps annotés de séquences mono-individu"
+      - "Faux déclenchements dans des fenêtres temporelles négatives vérifiées"
+      - "Calibrage de probabilité de présence temporelle"
+      - "Robustesse en présence de plusieurs individus et de séquences irrégulières"
+    candidate_modules:
+      - "Nouveau module de modélisation de séquences à concevoir"
+    depends_on:
+      - "Corpus de séquences mono-individu identifiées"
+      - "Zones de non-présence ou de présence d'échos validées"
+    risks:
+      - "Ne jamais fabriquer un chirp à partir du seul rythme."
+      - "Éviter les confusions avec des séquences de plusieurs individus."
+      - "Ne pas utiliser l'a priori rythmique pour confirmer une harmonique ou un écho."
+
+  - id: H04
+    title: "Rejeter les échos sans rejeter les chirps réels"
+    priority: highest
+    status: needs_benchmark
+    hypothesis: >-
+      Les copies retardées et plus faibles d'un chirp peuvent produire
+      des candidats parasites ou attirer le suivi de la trajectoire.
+      Les distinguer explicitement du signal direct réduirait
+      les détections d'échos.
+    questions:
+      - "Quels délais, atténuations, déformations et répétitions caractérisent les échos observés ?"
+      - "Le candidat a-t-il une correspondance avec un chirp direct antérieur ?"
+      - "Comment éviter de rejeter le chirp d'un autre individu ou une harmonique ?"
+    experiments:
+      - "Étiqueter manuellement des couples direct/écho et des contre-exemples."
+      - "Comparer suppression locale temps-fréquence, similarité de forme, délai causal et atténuation."
+      - "Appliquer une pénalité de probabilité d'écho avant classement, puis une méthode d'atténuation du spectrogramme."
+      - "Tester les cas d'échos multiples, de réflexions fortes et de chevauchement avec un vrai chirp."
+      - "Comparer un traitement d'écho distinct avant la détection et pendant le suivi."
+    metrics_needed:
+      - "Taux d'échos reconnus sur annotations écho vérifiées"
+      - "Chirps directs préservés"
+      - "Rappel par SNR et métriques de suivi inchangés ou améliorés"
+      - "Confusions écho / harmonique / individu distinct"
+    candidate_modules:
+      - "bat_analysis/detection.py"
+      - "bat_analysis/reassignment_tracking.py"
+      - "bat_analysis/ridge_confidence.py"
+    depends_on:
+      - "Échos positifs et vraies vocalisations proches étiquetés séparément"
+    risks:
+      - "Le comptage brut des candidats n'est pas une preuve de faux positifs."
+      - "Un écho peut être fort : ne pas le rejeter sur la puissance seule."
+      - "Une prédiction rythmique ne doit pas promouvoir un écho au rang de chirp réel."
