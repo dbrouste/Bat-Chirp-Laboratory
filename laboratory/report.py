@@ -45,6 +45,16 @@ def write_html(report: dict, path: Path) -> None:
                ("Rappel pondéré", totals["weighted_detector_recall"]),
                ("Suivi tolérance pondéré", totals[
                    "weighted_full_pipeline_within_tolerance_fraction"])]
+    neg = totals.get("reviewed_no_chirp", {})
+    if neg.get("wav_count", 0):
+        summary.extend([
+            ("WAV revus No chirp", neg["wav_count"]),
+            ("WAV No chirp avec candidats", neg["wavs_with_candidate_alert"]),
+            ("Alertes candidates sur No chirp", neg["candidate_alerts"]),
+            ("Fraction des WAV No chirp avec alerte", neg["wav_false_alarm_fraction"]),
+            ("Candidats par WAV No chirp", neg["candidate_alerts_per_wav"]),
+            ("Alertes candidates par heure No chirp", neg["candidate_alerts_per_hour"]),
+        ])
     rows = "".join(f"<tr><th>{escape(str(key))}</th><td>{escape(str(value))}</td></tr>"
                    for key, value in summary)
     bad = "".join(f"<li>{escape(str(x['file']))}: "
@@ -60,6 +70,11 @@ def write_html(report: dict, path: Path) -> None:
             "Le score géométrique utilise les distances perpendiculaires en kHz_eq "
             "et une couverture explicite ; les seuils SNR restent exploratoires. "
             "Les chirps non suivis ont une ordonnée zéro uniquement pour l'affichage.</p>"
+            "<p>Les WAV positifs ne sont pas annotés exhaustivement. Seuls "
+            "les WAV explicitement revus No chirp fournissent des exemples "
+            "négatifs. Les alertes sur ces WAV comptent des candidats du "
+            "détecteur, pas des trajectoires entièrement reconstruites. "
+            "La précision globale demeure inconnue.</p>"
             f"<table>{rows}</table>{plot}<h2>WAV en erreur</h2><ul>{bad}</ul>"
             "</body></html>")
     path.write_text(html, encoding="utf-8")
