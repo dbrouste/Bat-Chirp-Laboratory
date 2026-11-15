@@ -154,6 +154,14 @@ def test_small_frozen_baseline_skips_wavs_without_manual_reference(tmp_path, mon
     assert len(invoked) == 1
     assert Path(invoked[0]).name == "same.wav"
     provenance = report["metadata"]["frozen_dataset"]
-    assert provenance["wav_without_reference_skipped"] == 1
-    assert provenance["wav_with_reference"] == 1
+    # The builder partitions complete sessions, so both synthetic WAVs
+    # without manual references can land in calibration. Derive the expected
+    # count from the frozen manifest instead of assuming one such WAV.
+    expected_without_reference = sum(
+        Path(row["dataset_wav"]).name == "000_empty.wav"
+        for row in calibration
+    )
+    expected_with_reference = len(calibration) - expected_without_reference
+    assert provenance["wav_without_reference_skipped"] == expected_without_reference
+    assert provenance["wav_with_reference"] == expected_with_reference
     assert report["totals"]["annotated"] == 1
