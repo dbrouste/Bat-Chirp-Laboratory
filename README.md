@@ -19,8 +19,15 @@ détecteur ou le corpus :
 - Résultats : `agent_report.html`, `leaderboard.csv` et `priority_cases.csv`.
 
 Lire le [guide agent local](docs/AGENT_LOCAL.md) pour la reprise
-automatique des campagnes et les garde-fous scientifiques. L'agent V1
-cherche des paramètres ; il n'édite pas automatiquement le code avec une IA.
+automatique des campagnes et les garde-fous scientifiques.
+
+**Pilote Codex (code)** : un second agent peut maintenant proposer
+jusqu'à trois variantes de `bat_analysis/detection.py` dans des worktrees Git
+isolés, les tester puis les comparer à la meilleure configuration de
+calibration. Il ne pousse ni ne fusionne aucun changement :
+[guide Codex](docs/CODE_AGENT_PILOT.md), lanceur
+`tools/run_code_agent_windows.cmd`. Ce pilote nécessite Codex CLI sur
+Windows et une connexion au modèle ; les WAV restent évalués localement.
 
 ## Géométrie partagée
 
@@ -55,7 +62,9 @@ sans toucher au corpus ou à la partition test.
 
 **Non implémentés :** score géométrique complet avec contrôle des prolongements
 et des fragmentations (spécification dans `docs/`), recherche Optuna,
-agent IA modifiant le code et interface graphique de pilotage.
+agents de refactorisation sans restriction et interface graphique de pilotage.
+Le pilote IA de modification du code reste borné à un seul fichier,
+sur worktree isolé et avec revue humaine obligatoire.
 
 ## Installation sur Windows
 
