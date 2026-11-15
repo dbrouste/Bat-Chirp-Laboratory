@@ -21,6 +21,15 @@ détecteur ou le corpus :
 Lire le [guide agent local](docs/AGENT_LOCAL.md) pour la reprise
 automatique des campagnes et les garde-fous scientifiques.
 
+**Négatifs vérifiés :** les WAV explicitement étiquetés
+`review_status=no_chirp` dans Bat-Acoustic-Analyser peuvent être
+évalués comme références négatives de calibration via
+`python -m laboratory --dataset CHEMIN_DATASET --out CHEMIN_SORTIE --include-reviewed-negatives`.
+L'agent les inclut dans ses **nouvelles** campagnes, séparément des
+chirps manuels positifs. Seuls les candidats émis dans ces WAV
+explicitement négatifs comptent pour les métriques de fausses alertes.
+Consulter [le protocole No chirp](docs/REVIEWED_NEGATIVES.md).
+
 **Idées scientifiques à explorer :** les hypothèses sur les
 harmoniques ciblées, les seuils asymétriques en fin de chirp, la
 prédiction rythmique et le rejet des échos sont conservées dans
