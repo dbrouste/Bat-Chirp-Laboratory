@@ -89,6 +89,9 @@ def _prompt(goal: str, baseline: dict, prior: list[dict]) -> str:
         f"high SNR recall={baseline['high_snr_recall']:.4f}; "
         f"weighted full pipeline={baseline['weighted_full_pipeline']:.4f}; "
         f"candidate count={baseline['candidates']}.",
+        (f"Reviewed no_chirp negative WAVs={baseline.get('negative_wavs', 0)}, "
+         f"WAVs with candidate alarm={baseline.get('negative_alarm_wavs', 0)}, "
+         f"candidate alarms={baseline.get('negative_candidates', 0)}."),
         "You are inside a temporary Git worktree with SOURCE CODE ONLY. "
         "You do not have access to or permission to inspect user WAVs, "
         "JSON annotations, dataset paths or the held-out test partition.",
@@ -102,6 +105,10 @@ def _prompt(goal: str, baseline: dict, prior: list[dict]) -> str:
         "calibration benchmark, and may reject your change.",
         "Do not optimize around known individual WAV identities or "
         "memorize annotations. Prioritize generalizable signal behavior.",
+        "Positive-reference WAVs are NOT exhaustively annotated, so "
+        "candidate counts there do not imply false positives. Only WAVs "
+        "explicitly reviewed as no_chirp provide negative reference labels. "
+        "Avoid increasing detector candidate alarms on that verified subset.",
         "Provide a concise summary and any scientific caveats.",
     ]
     if prior:
@@ -255,7 +262,7 @@ def run(*, dataset: Path, processing_root: Path, out: Path,
             original = runner.run(
                 dataset=dataset, out=out / "original_baseline",
                 processing_root=processing_root, workers=workers,
-                options=options)
+                options=options, include_reviewed_negatives=True)
             base_metrics = metrics(original)
             state["baseline"] = base_metrics
             _atomic_json(state_file, state)
@@ -311,7 +318,7 @@ def run(*, dataset: Path, processing_root: Path, out: Path,
                 report = runner.run(
                     dataset=dataset, out=trial / "benchmark",
                     processing_root=worktree, workers=workers,
-                    options=options)
+                    options=options, include_reviewed_negatives=True)
                 measure = metrics(report)
                 if (runner.code_fingerprint(processing_root) != code_hash
                         or _git(processing_root, "status", "--porcelain")):
