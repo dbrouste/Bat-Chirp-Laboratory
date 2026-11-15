@@ -55,7 +55,8 @@ def _git(repo: Path, *args: str) -> str:
         encoding="utf-8", errors="replace", check=False, timeout=30)
     if proc.returncode:
         raise RuntimeError(f"Git {args[0]} failed: {proc.stderr[-1500:]}")
-    return proc.stdout.strip()
+    # Preserve the leading status column in " M path" porcelain output.
+    return proc.stdout.rstrip("\r\n")
 
 
 def _verify_edit(worktree: Path, original_head: str) -> list[str]:
@@ -260,12 +261,18 @@ def run(*, dataset: Path, processing_root: Path, out: Path,
                                             state["attempts"]),
                            trial / "codex.log", codex_timeout_s)
                 result["changed"] = _verify_edit(worktree, original_head)
+                if (runner.code_fingerprint(processing_root) != code_hash
+                        or _git(processing_root, "status", "--porcelain")):
+                    raise RuntimeError("Original processing checkout changed")
                 _tests(worktree, trial / "pytest.log", timeout=240)
                 report = runner.run(
                     dataset=dataset, out=trial / "benchmark",
                     processing_root=worktree, workers=workers,
                     options=options)
                 measure = metrics(report)
+                if (runner.code_fingerprint(processing_root) != code_hash
+                        or _git(processing_root, "status", "--porcelain")):
+                    raise RuntimeError("Original processing checkout changed")
                 allowed, why, score = judge(measure, base_metrics)
                 result.update({
                     "status": "complete", "metrics": measure,
@@ -284,7 +291,9 @@ def run(*, dataset: Path, processing_root: Path, out: Path,
                 "best": champion, "attempts": state["attempts"],
                 "recommendation_requires_human_approval": True,
                 "test_partition_accessed": False,
-                "source_checkout_unchanged": True,
+                "source_checkout_unchanged": (
+                    runner.code_fingerprint(processing_root) == code_hash
+                    and not _git(processing_root, "status", "--porcelain")),
                 "no_git_changes_promoted": True,
             })
             print(f"[{i+1}/{max_total}] {result['status']} "
