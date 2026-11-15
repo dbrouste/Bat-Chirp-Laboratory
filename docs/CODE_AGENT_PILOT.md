@@ -19,9 +19,11 @@ soumet chaque proposition à un contrôleur local non-IA qui :
    non suivi ou contenant un conflit Git ;
 6. exécute `tests/test_snr_benchmark.py` et
    `tests/test_tracking_margin.py` dans cette copie ;
-7. lance les 37 WAV annotés du corpus de calibration dans le benchmark
-   complet, compare à la baseline **avec les mêmes paramètres** et applique
-   les garde-fous existants ;
+7. lance le benchmark complet sur les WAV de calibration contenant
+   des chirps manuels validés **et** sur les WAV explicitement
+   `review_status=no_chirp` présents dans le manifeste, puis compare
+   à la baseline **avec les mêmes paramètres** et applique les garde-fous
+   sur le rappel, la géométrie et les fausses alertes sur les négatifs ;
 8. conserve le diff du meilleur essai **dans son worktree** pour une
    éventuelle revue humaine. Aucune fusion, push ou modification
    automatique de `main`/`develop`.
@@ -164,8 +166,13 @@ jeu de validation indépendant avant toute fusion.
 - Cette V1 ne modifie que `bat_analysis/detection.py`, trois essais
   maximum ; elle ne cherche pas encore d'architectures nouvelles.
 - Le jeu de test reste inaccessible aux benchmarks de recherche.
-- Les données de calibration ne sont pas annotées exhaustivement ;
-  le nombre de candidats n'est **pas** une mesure du taux de faux positifs.
+- Les WAV positifs ne sont **pas annotés exhaustivement** ;
+  les candidats non appariés dans ces WAV ne sont pas des faux positifs.
+  Les WAV explicitement `no_chirp` permettent au contraire une mesure
+  distincte des fausses **alertes candidates** sur ce sous-corpus
+  (voir [REVIEWED_NEGATIVES.md](REVIEWED_NEGATIVES.md)).
+  Si aucune référence `no_chirp` n'est présente dans la calibration,
+  la mesure reste indisponible.
 - Le score géométrique reste non calibré. Les résultats peuvent
   suradapter la calibration. Aucune amélioration ne doit être présentée
   comme validée hors corpus sans test indépendant.
