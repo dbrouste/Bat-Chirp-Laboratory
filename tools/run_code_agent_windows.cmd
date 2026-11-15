@@ -2,8 +2,8 @@
 setlocal
 cd /d "%~dp0.."
 if not defined CHIRP_DATASET set "CHIRP_DATASET=%USERPROFILE%\Documents\Python\Python-data\dataset-v1"
-if not defined CHIRP_AGENT_OUTPUT set "CHIRP_AGENT_OUTPUT=%USERPROFILE%\Documents\Python\Python-data\chirp-agent-v1"
-if not defined CHIRP_CODE_AGENT_OUTPUT set "CHIRP_CODE_AGENT_OUTPUT=%USERPROFILE%\Documents\Python\Python-data\chirp-code-agent-v1"
+if not defined CHIRP_AGENT_OUTPUT set "CHIRP_AGENT_OUTPUT=%USERPROFILE%\Documents\Python\Python-data\chirp-agent-v2"
+if not defined CHIRP_CODE_AGENT_OUTPUT set "CHIRP_CODE_AGENT_OUTPUT=%USERPROFILE%\Documents\Python\Python-data\chirp-code-agent-v2"
 echo.
 echo === Chirp Lab : Codex code agent pilot ===
 echo Calibrage : %CHIRP_AGENT_OUTPUT%\agent_summary.json
