@@ -1,3 +1,11 @@
+# Bat-Chirp-Laboratory
+
+Laboratoire indépendant pour évaluer et, à terme, améliorer automatiquement la
+détection et le suivi des chirps ultrasonores. Le code d'analyse audio reste dans
+[`dbrouste/bat_full_spectrum_processing`](https://github.com/dbrouste/bat_full_spectrum_processing) ;
+les annotations humaines proviennent notamment de
+[`dbrouste/Bat-Acoustic-Analyser`](https://github.com/dbrouste/Bat-Acoustic-Analyser).
+
 ## Agent local d'optimisation du détecteur
 
 Pour éviter les allers-retours manuels entre exécutions, la version
@@ -13,15 +21,6 @@ détecteur ou le corpus :
 Lire le [guide agent local](docs/AGENT_LOCAL.md) pour la reprise
 automatique des campagnes et les garde-fous scientifiques. L'agent V1
 cherche des paramètres ; il n'édite pas automatiquement le code avec une IA.
-
-
-# Bat-Chirp-Laboratory
-
-Laboratoire indépendant pour évaluer et, à terme, améliorer automatiquement la
-détection et le suivi des chirps ultrasonores. Le code d'analyse audio reste dans
-[`dbrouste/bat_full_spectrum_processing`](https://github.com/dbrouste/bat_full_spectrum_processing) ;
-les annotations humaines proviennent notamment de
-[`dbrouste/Bat-Acoustic-Analyser`](https://github.com/dbrouste/Bat-Acoustic-Analyser).
 
 ## Géométrie partagée
 
@@ -50,9 +49,13 @@ perpendiculaire partagées avec le benchmark SNR, agrégation indépendante,
 exécution multiprocessus Windows, cache par WAV, historique SQLite et rapport
 HTML autonome.
 
+**Disponible en plus :** un agent local borné, autonome pour explorer des
+paramètres du détecteur, enregistrer les résultats et proposer une configuration
+sans toucher au corpus ou à la partition test.
+
 **Non implémentés :** score géométrique complet avec contrôle des prolongements
-et des fragmentations (spécification dans `docs/`), recherche Optuna, agent IA
-et interface de pilotage. Le laboratoire n'est pas encore un agent autonome.
+et des fragmentations (spécification dans `docs/`), recherche Optuna,
+agent IA modifiant le code et interface graphique de pilotage.
 
 ## Installation sur Windows
 
