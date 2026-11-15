@@ -5,3 +5,4 @@ librosa
 shapely
 pandas
 plotly
+PyYAML>=6.0
