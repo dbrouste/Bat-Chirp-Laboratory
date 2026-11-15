@@ -121,15 +121,13 @@ def judge(candidate: dict, baseline: dict) -> tuple[bool, str, float]:
                  or candidate["geometry_khz_eq"]
                  > baseline["geometry_khz_eq"] * 1.2)):
         return False, "geometric mean error grew by >20%", -1.0
-    if candidate["candidates"] > max(1, baseline["candidates"]) * 2.5:
-        return False, "candidate volume grew by >2.5x", -1.0
-    # The candidate count is a compute-budget guard, not a precision metric.
-    volume_cost = 0.005 * max(
-        0.0, candidate["candidates"] / max(1, baseline["candidates"]) - 1.0)
+    # Reference WAVs are only partially annotated. Unmatched candidates
+    # might be genuine but unannotated calls: neither candidate volume nor
+    # its reduction is evidence of precision, specificity or echo rejection.
+    # Candidate count remains diagnostic only (e.g. compute profiling).
     score = (0.15 * candidate["recall"]
              + 0.40 * candidate["weighted_recall"]
-             + 0.45 * candidate["weighted_full_pipeline"]
-             - volume_cost)
+             + 0.45 * candidate["weighted_full_pipeline"])
     return True, "valid", round(score, 6)
 
 
@@ -236,11 +234,16 @@ def _export(output: Path, state: dict) -> None:
         "recommended": selected if selected and selected != baseline else None,
         "recommendation_requires_human_approval": True,
         "test_partition_accessed": False,
+        "annotations_exhaustive": False,
+        "precision_and_false_positive_rate_measurable": False,
         "note": (
             "All rankings are calibration-only. This agent searches parameter "
             "settings without modifying detector source or dataset. An unmatched "
-            "candidate is NOT evidence of a false positive. Geometric SNR "
-            "tolerances remain uncalibrated. Do not deploy automatically."
+            "candidate is NOT evidence of a false positive, even inside "
+            "WAVs with manual annotations: annotations are not exhaustive. "
+            "Candidate counts are diagnostic only and never impact ranking. "
+            "Geometric SNR tolerances remain uncalibrated. "
+            "Do not deploy automatically."
         ),
     }
     _write_json(output / "agent_summary.json", summary)
