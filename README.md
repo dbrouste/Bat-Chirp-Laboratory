@@ -21,6 +21,15 @@ détecteur ou le corpus :
 Lire le [guide agent local](docs/AGENT_LOCAL.md) pour la reprise
 automatique des campagnes et les garde-fous scientifiques.
 
+**Idées scientifiques à explorer :** les hypothèses sur les
+harmoniques ciblées, les seuils asymétriques en fin de chirp, la
+prédiction rythmique et le rejet des échos sont conservées dans
+[`experiments/ideas.yaml`](experiments/ideas.yaml), avec un
+[programme expérimental détaillé](docs/RESEARCH_IDEAS.md).
+Les afficher via `python -m laboratory.research_ideas`.
+Tant que leurs benchmarks spécialisés ne sont pas prêts, le pilote
+Codex refuse de les traiter comme des objectifs mesurables.
+
 **Pilote Codex (code)** : un second agent peut maintenant proposer
 jusqu'à trois variantes de `bat_analysis/detection.py` dans des worktrees Git
 isolés, les tester puis les comparer à la meilleure configuration de
