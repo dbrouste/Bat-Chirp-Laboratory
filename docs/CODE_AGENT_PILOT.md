@@ -101,7 +101,7 @@ Vérifier que le dépôt détecteur est propre :
     cd ..\Bat-Chirp-Laboratory
 
 La campagne de paramétrage doit déjà avoir été exécutée dans le dossier
-`chirp-agent-v1` avec son `agent_summary.json`. Le pilote vérifie le
+`chirp-agent-v2` avec son `agent_summary.json`. Le pilote vérifie le
 manifeste du corpus et exige un checkout du détecteur propre.
 
 Si l'empreinte générale diffère de la campagne initiale (par exemple
@@ -121,18 +121,18 @@ Double-cliquer sur :
 Par défaut, les fichiers sont lus dans :
 
     %USERPROFILE%\Documents\Python\Python-data\dataset-v1
-    %USERPROFILE%\Documents\Python\Python-data\chirp-agent-v1\agent_summary.json
+    %USERPROFILE%\Documents\Python\Python-data\chirp-agent-v2\agent_summary.json
 
 Les résultats vont dans :
 
-    %USERPROFILE%\Documents\Python\Python-data\chirp-code-agent-v1
+    %USERPROFILE%\Documents\Python\Python-data\chirp-code-agent-v2
 
 Pour réaliser d'abord une proposition sans boucle complète :
 
     python -m laboratory.code_agent ^
       --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" ^
-      --parameter-agent-summary "C:\Users\damien\Documents\Python\Python-data\chirp-agent-v1\agent_summary.json" ^
-      --out "C:\Users\damien\Documents\Python\Python-data\chirp-code-agent-v1" ^
+      --parameter-agent-summary "C:\Users\damien\Documents\Python\Python-data\chirp-agent-v2\agent_summary.json" ^
+      --out "C:\Users\damien\Documents\Python\Python-data\chirp-code-agent-v2" ^
       --workers 4 --max-new 1
 
 Reprendre simplement avec la même commande sans `--max-new 1`.
