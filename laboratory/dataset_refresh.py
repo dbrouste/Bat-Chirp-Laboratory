@@ -111,8 +111,12 @@ def refresh_annotations(dataset: Path, wav_name: str | None = None, *,
     if extra_wavs:
         projected = dict(source)
         projected["files"] = {name: new_files[name] for name in old_files}
-        snapshot_bytes = json.dumps(
-            projected, ensure_ascii=False, indent=2).encode("utf-8")
+        if projected == original:
+            # Source JSON membership alone is not an annotation change.
+            snapshot_bytes = dataset_json.read_bytes()
+        else:
+            snapshot_bytes = json.dumps(
+                projected, ensure_ascii=False, indent=2).encode("utf-8")
     else:
         snapshot_bytes = source_json.read_bytes()
     new_counts = {}
