@@ -8,6 +8,7 @@ candidate by Git status, local tests and a full calibration benchmark.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -20,6 +21,7 @@ from pathlib import Path
 from . import runner
 from .autonomous_optimizer import judge, metrics
 from .frozen_dataset import collect_frozen_dataset
+from .research_ideas import select_idea
 
 SCHEMA = "codex_detector_pilot_v1"
 ALLOWLIST = {"bat_analysis/detection.py"}
@@ -158,9 +160,23 @@ def _tests(worktree: Path, logfile: Path, timeout: int) -> None:
 def run(*, dataset: Path, processing_root: Path, out: Path,
         parameter_agent_summary: Path, workers: int = 4,
         max_total: int = 3, max_new: int | None = None,
-        codex_timeout_s: int = 900) -> dict:
+        codex_timeout_s: int = 900,
+        research_idea_id: str | None = None) -> dict:
     if not 1 <= max_total <= len(GOALS):
         raise ValueError("max_total must be 1..3")
+    # Research goals are opt-in. No code experiment is permitted until
+    # its own benchmark and labels are ready and supported by this pilot.
+    research_idea = (
+        select_idea(research_idea_id, for_code_agent=True)
+        if research_idea_id else None
+    )
+    research_digest = (
+        hashlib.sha256(json.dumps(
+            research_idea, ensure_ascii=False, sort_keys=True
+        ).encode("utf-8")).hexdigest()
+        if research_idea else None
+    )
+
     if max_new is not None and max_new < 1:
         raise ValueError("max_new must be positive")
     if not 1 <= workers <= 8:
@@ -212,13 +228,18 @@ def run(*, dataset: Path, processing_root: Path, out: Path,
                     or state.get("provenance") != provenance
                     or state.get("code_hash") != code_hash
                     or state.get("head") != original_head
-                    or state.get("options") != options):
+                    or state.get("options") != options
+                    or state.get("research_idea_id") != research_idea_id
+                    or state.get("research_digest") != research_digest):
                 raise ValueError("Campaign provenance changed; use a new output")
         else:
             state = {
                 "schema": SCHEMA, "provenance": provenance,
                 "code_hash": code_hash, "head": original_head,
-                "options": options, "started_utc": datetime.now(timezone.utc).isoformat(),
+                "options": options,
+                "research_idea_id": research_idea_id,
+                "research_digest": research_digest,
+                "started_utc": datetime.now(timezone.utc).isoformat(),
                 "baseline": None, "attempts": [],
             }
         # Establish reproducible baseline with the parameter-agent incumbent.
@@ -245,7 +266,18 @@ def run(*, dataset: Path, processing_root: Path, out: Path,
             max_new is None or fresh < max_new
         ):
             i = len(state["attempts"])
-            goal = GOALS[i]
+            if research_idea is None:
+                goal = GOALS[i]
+            else:
+                goal = (
+                    f"Research idea {research_idea['id']}: "
+                    f"{research_idea['title']}. "
+                    f"Hypothesis: {research_idea['hypothesis']} "
+                    "Proposed experiments: "
+                    + "; ".join(research_idea["experiments"])
+                    + ". Safeguards: "
+                    + "; ".join(research_idea.get("risks", []))
+                )
             trial = out / "attempts" / f"attempt_{i+1:02d}"
             worktree = trial / "code"
             if worktree.exists():
@@ -291,6 +323,7 @@ def run(*, dataset: Path, processing_root: Path, out: Path,
             _atomic_json(state_file, state)
             _atomic_json(out / "code_agent_summary.json", {
                 "schema": SCHEMA, "baseline": state["baseline"],
+                "research_idea_id": research_idea_id,
                 "best": champion, "attempts": state["attempts"],
                 "recommendation_requires_human_approval": True,
                 "test_partition_accessed": False,
@@ -322,12 +355,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--max-total", type=int, default=3)
     parser.add_argument("--max-new", type=int, default=None)
+    parser.add_argument("--research-idea", dest="research_idea_id",
+                        help="Opt-in Hxx from experiments/ideas.yaml; only ready and supported ideas")
     args = parser.parse_args(argv)
     try:
         result = run(
             dataset=args.dataset, processing_root=args.processing_root,
             out=args.out, parameter_agent_summary=args.parameter_agent_summary,
-            workers=args.workers, max_total=args.max_total, max_new=args.max_new)
+            workers=args.workers, max_total=args.max_total,
+            max_new=args.max_new, research_idea_id=args.research_idea_id)
     except (OSError, ValueError, RuntimeError) as exc:
         parser.exit(2, f"Error: {exc}\n")
     print(json.dumps(result, ensure_ascii=False, indent=2))
