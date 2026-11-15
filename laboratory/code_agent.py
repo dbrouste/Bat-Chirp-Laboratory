@@ -126,8 +126,8 @@ def _run_codex(worktree: Path, prompt: str, log: Path, timeout: int) -> None:
                  if not key.upper().startswith("CHIRP_")}
     try:
         result = subprocess.run(
-            [cli, "exec", "--sandbox", "workspace-write",
-             "--ask-for-approval", "never", "-"],
+            [cli, "--ask-for-approval", "never", "exec",
+             "--sandbox", "workspace-write", "-"],
             input=prompt, capture_output=True, text=True,
             cwd=worktree, encoding="utf-8", errors="replace",
             env=model_env, check=False, timeout=timeout)
@@ -204,8 +204,13 @@ def run(*, dataset: Path, processing_root: Path, out: Path,
     if provenance != source_summary.get("dataset_provenance"):
         raise ValueError("Dataset changed since parameter campaign")
     code_hash = runner.code_fingerprint(processing_root)
-    if code_hash != source_summary.get("algorithm_fingerprint"):
-        raise ValueError("Detector code changed since parameter campaign")
+    # The parameter campaign fingerprints every laboratory Python module too.
+    # Adding agent/backlog infrastructure changes this hash even when the
+    # external detector has not changed. Re-run the selected baseline locally
+    # before any code edits: all pilot candidates compare with that fresh
+    # baseline, not with historical aggregate scores.
+    parameter_fingerprint = source_summary.get("algorithm_fingerprint")
+    parameter_environment_changed = code_hash != parameter_fingerprint
     if _git(processing_root, "status", "--porcelain"):
         raise ValueError("Processing checkout must be clean")
     original_head = _git(processing_root, "rev-parse", "HEAD")
@@ -227,6 +232,7 @@ def run(*, dataset: Path, processing_root: Path, out: Path,
             if (state.get("schema") != SCHEMA
                     or state.get("provenance") != provenance
                     or state.get("code_hash") != code_hash
+                    or state.get("parameter_fingerprint") != parameter_fingerprint
                     or state.get("head") != original_head
                     or state.get("options") != options
                     or state.get("research_idea_id") != research_idea_id
@@ -236,6 +242,8 @@ def run(*, dataset: Path, processing_root: Path, out: Path,
             state = {
                 "schema": SCHEMA, "provenance": provenance,
                 "code_hash": code_hash, "head": original_head,
+                "parameter_fingerprint": parameter_fingerprint,
+                "parameter_environment_changed": parameter_environment_changed,
                 "options": options,
                 "research_idea_id": research_idea_id,
                 "research_digest": research_digest,
@@ -324,6 +332,8 @@ def run(*, dataset: Path, processing_root: Path, out: Path,
             _atomic_json(out / "code_agent_summary.json", {
                 "schema": SCHEMA, "baseline": state["baseline"],
                 "research_idea_id": research_idea_id,
+                "parameter_environment_changed": state["parameter_environment_changed"],
+                "baseline_was_rerun_on_current_code": True,
                 "best": champion, "attempts": state["attempts"],
                 "recommendation_requires_human_approval": True,
                 "test_partition_accessed": False,
