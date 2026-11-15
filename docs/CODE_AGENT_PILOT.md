@@ -41,6 +41,37 @@ enregistrements ou les secrets nécessitent une isolation renforcée,
 utiliser une VM ou un compte Windows séparé sans accès au dossier
 Python-data. Ne pas fournir d'accès réseau aux outils du sandbox.
 
+## Catalogue scientifique des idées
+
+Les pistes à explorer sont maintenant définies dans
+[`experiments/ideas.yaml`](../experiments/ideas.yaml) et explicitées
+dans [`docs/RESEARCH_IDEAS.md`](RESEARCH_IDEAS.md).
+
+Lister les quatre idées, leur priorité et leur état :
+
+```powershell
+python -m laboratory.research_ideas
+```
+
+Une commande `--research-idea H04` est prévue pour sélectionner
+explicitement une idée, mais **elle refuse de lancer Codex tant que
+l'idée est en état `needs_benchmark`**. Ce verrou est volontaire :
+notre benchmark actuel évalue les chirps manuels, mais n'identifie pas
+encore de façon fiable les échos, les paires harmoniques ou les séries
+mono-individu. Sans étiquettes et métriques propres à ces phénomènes,
+un agent pourrait améliorer le score global tout en aggravant les
+erreurs écologiques recherchées.
+
+Le passage à `ready_for_code_agent` devra s'accompagner d'un
+benchmark effectivement implémenté, d'un protocole de validation et de
+permissions de fichiers adaptées. Le pilote refuse les modules autres
+que `bat_analysis/detection.py` et les benchmarks non reconnus ;
+un simple changement du statut YAML ne déverrouille pas ces droits.
+Les campagnes habituelles sans `--research-idea` conservent leurs
+trois objectifs intégrés.
+
+`PyYAML` est ajouté dans `requirements.txt` pour lire le catalogue.
+
 ## Préparation Windows (une seule fois)
 
 Exiger les deux repos voisins :
@@ -68,9 +99,16 @@ Vérifier que le dépôt détecteur est propre :
     cd ..\Bat-Chirp-Laboratory
 
 La campagne de paramétrage doit déjà avoir été exécutée dans le dossier
-`chirp-agent-v1` avec son `agent_summary.json`, et le code du détecteur
-ne doit pas avoir changé depuis. Sinon, relancer d'abord l'agent de
-paramètres dans un nouveau dossier.
+`chirp-agent-v1` avec son `agent_summary.json`. Le pilote vérifie le
+manifeste du corpus et exige un checkout du détecteur propre.
+
+Si l'empreinte générale diffère de la campagne initiale (par exemple
+parce que des fichiers d'orchestration ont été ajoutés au laboratoire),
+le pilote **recalcule obligatoirement une baseline avec le code actuel**
+et les paramètres sélectionnés. Le champ
+`parameter_environment_changed` le signale : les scores historiques
+ne sont pas directement utilisés comme témoin de la campagne Codex.
+Les propositions sont comparées à cette baseline recalculée.
 
 ## Lancement
 
