@@ -12,6 +12,11 @@ schema: chirp_research_ideas_v1
 
 global_constraints:
   dataset_partition: calibration
+  annotated_wavs_are_exhaustively_labeled: false
+  unannotated_regions_label: unknown
+  optimization_uses_positive_references_only: true
+  candidate_count_is_quality_metric: false
+  score_false_positives_without_verified_negatives: false
   protect_manual_annotations: true
   test_partition_for_optimization: false
   no_automatic_merge_or_deployment: true
