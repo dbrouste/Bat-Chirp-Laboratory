@@ -101,6 +101,27 @@ def test_judge_does_not_call_unmatched_candidates_false_positives():
     assert reason == "valid"
 
 
+def test_unmatched_candidate_count_does_not_change_quality_score_or_eligibility():
+    # Even WAVs with manual chirps can contain many real, unannotated calls.
+    # Different candidate counts are diagnostic only, never labelled false positives.
+    base = _metric()
+    fewer = _metric(weighted=.87, quality=.77, candidates=200)
+    more = _metric(weighted=.87, quality=.77, candidates=5000)
+    e1, _, score1 = agent.judge(fewer, base)
+    e2, _, score2 = agent.judge(more, base)
+    assert e1 and e2
+    assert score1 == score2
+
+
+def test_candidate_count_alone_cannot_be_an_optimization():
+    base = _metric()
+    identical_with_less_candidates = dict(base, candidates=10)
+    e1, _, score_base = agent.judge(base, base)
+    e2, _, score_less = agent.judge(identical_with_less_candidates, base)
+    assert e1 and e2
+    assert score_base == score_less
+
+
 def test_agent_autoresumes_with_no_repeated_trials(tmp_path, monkeypatch):
     dataset, processing, partitions, calls = _setup(tmp_path, monkeypatch)
     out = tmp_path / "results"
