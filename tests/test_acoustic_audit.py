@@ -97,6 +97,7 @@ def test_rejects_invalid_blend_settings(tmp_path):
         evaluate_chirp(wav,chirp(),fake_display,reassignment_percent=110)
 
 
+@pytest.mark.integration
 def test_real_gui_pipeline_is_importable_when_checkout_available(tmp_path):
     from pathlib import Path
     from laboratory.acoustic_audit import load_display_pipeline

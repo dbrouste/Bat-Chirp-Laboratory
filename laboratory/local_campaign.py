@@ -22,6 +22,12 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .dataset import sha256_file
+from .fingerprints import implementation_fingerprint
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_ANALYSER_ROOT = ROOT.parent / "Bat-Acoustic-Analyser"
+
 DEFAULT_WINDOWS = (3, 4, 5, 7)
 DEFAULT_THRESHOLDS = (0.75, 1.0, 1.5, 2.0, 2.5)
 SCHEMA_VERSION = 1
@@ -43,13 +49,14 @@ def parse_floats(value):
 
 def run_key(dataset, *, max_chirps, skip_chirps, fft_size, stft_hop,
             reassignment_hop, spectral_alpha, window, analyser_root=None):
-    """Fingerprint the run definition, not sensitive WAV contents."""
+    """Identify calibration content, implementations, runtime and parameters."""
+    dataset = Path(dataset).resolve()
     manifest = (dataset / "manifest.csv").read_bytes()
     # Include actual dataset JSON/WAV metadata and implementation code:
     # do not reuse stale results after an annotation or algorithm change.
     with (dataset / "manifest.csv").open(encoding="utf-8-sig", newline="") as stream:
         entries = list(csv.DictReader(stream))
-    sources = []
+    sources = {}
     for entry in entries:
         if entry.get("partition") != "calibration":
             continue
@@ -57,30 +64,24 @@ def run_key(dataset, *, max_chirps, skip_chirps, fft_size, stft_hop,
             item = (dataset / entry[field]).resolve()
             if not item.is_relative_to(dataset):
                 raise ValueError("manifest references path outside dataset")
-            stat = item.stat()
-            sources.append((str(item.relative_to(dataset)), stat.st_size,
-                            stat.st_mtime_ns))
-    sources = sorted(set(sources))
-    code_root = Path(__file__).resolve().parents[1]
-    implementation = []
-    for relative in ("laboratory/sensitivity_audit.py",
-                     "laboratory/acoustic_audit_v2.py",
-                     "laboratory/local_quality.py",
-                     "laboratory/transverse_ridge.py",
-                     "chirp_geometry.py"):
-        item = code_root / relative
-        if item.is_file():
-            implementation.append((relative,hashlib.sha256(item.read_bytes()).hexdigest()))
+            relative = item.relative_to(dataset).as_posix()
+            if relative not in sources:
+                sources[relative] = sha256_file(item)
+    analyser_root = Path(analyser_root or DEFAULT_ANALYSER_ROOT).resolve()
+    implementation = implementation_fingerprint({
+        "laboratory": (ROOT, ("laboratory", "chirp_geometry")),
+        "analyser": (analyser_root, ("bat_analyser",)),
+    })
     definition = {
         "version": SCHEMA_VERSION, "dataset": str(dataset),
         "manifest_sha256": hashlib.sha256(manifest).hexdigest(),
-        "dataset_file_metadata": sources,
+        "dataset_file_hashes": sources,
         "code_hashes": implementation,
         "max_chirps": max_chirps, "skip_chirps": skip_chirps,
         "fft_size": fft_size, "stft_hop": stft_hop,
         "reassignment_hop": reassignment_hop,
         "spectral_alpha": spectral_alpha, "window": window,
-        "analyser_root": str(Path(analyser_root).resolve()) if analyser_root else None,
+        "analyser_root": str(analyser_root),
     }
     return hashlib.sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest()[:20]
 

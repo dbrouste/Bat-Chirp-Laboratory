@@ -86,6 +86,19 @@ sur worktree isolé et avec revue humaine obligatoire.
 
 ## Installation sur Windows
 
+Pour une installation reproductible et une validation rapide sans corpus privé,
+suivre [Validation locale Windows](docs/VALIDATION_WINDOWS.md). L'environnement
+de référence de cette procédure est CPython 3.13.0 x64 ; ses dépendances directes
+et transitives sont figées dans `requirements-windows-py313.lock`.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\validate_local.ps1
+```
+
+Cette commande vérifie les dépendances et lance les tests sans intégrations
+externes ni corpus. Les instructions Python 3.12 ci-dessous restent une
+installation historique non verrouillée.
+
 Prévoir deux clones voisins, par exemple :
 
 ```text

@@ -135,6 +135,7 @@ def test_summarizing_independent_wavs_is_weighted_by_chirps():
     assert totals["full_pipeline_within_tolerance_fraction"] == pytest.approx(1 / 3)
 
 
+@pytest.mark.integration
 @pytest.mark.skipif(
     not (PROCESSING_ROOT / "benchmark" / "reassignment_detector_seeds.py").is_file(),
     reason="External processing checkout required for integration test")

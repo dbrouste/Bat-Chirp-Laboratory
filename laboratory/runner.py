@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
-import importlib.metadata
 import json
 import multiprocessing
 import os
@@ -23,9 +22,10 @@ from time import perf_counter
 import traceback
 
 from .dataset import (collect_annotations, fingerprint_inputs, stable_hash,
-                      sha256_file, write_manifest)
+                      write_manifest)
 from .aggregation import summarize_results
 from .frozen_dataset import collect_frozen_dataset
+from .fingerprints import implementation_fingerprint
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,21 +40,10 @@ DEFAULT_OPTIONS = {
 
 def code_fingerprint(processing_root: Path) -> str:
     """Include source edits from both repositories, not only Git commit IDs."""
-    files = sorted([*(ROOT / "laboratory").rglob("*.py"),
-                    *(ROOT / "chirp_geometry").rglob("*.py"),
-                    *(processing_root / "bat_analysis").rglob("*.py"),
-                    *(processing_root / "benchmark").rglob("*.py")])
-    files.extend([ROOT / "requirements.txt", processing_root / "requirements.txt"])
-    metadata = [(str(p.resolve()), sha256_file(p))
-                for p in files if p.is_file()]
-    versions = {}
-    for package in ("numpy", "scipy", "soundfile"):
-        try:
-            versions[package] = importlib.metadata.version(package)
-        except importlib.metadata.PackageNotFoundError:
-            versions[package] = None
-    return stable_hash({"files": metadata, "dependencies": versions,
-                        "python": sys.version_info[:3]})
+    return implementation_fingerprint({
+        "laboratory": (ROOT, ("laboratory", "chirp_geometry")),
+        "processing": (processing_root, ("bat_analysis", "benchmark")),
+    })
 
 
 def git_info(repo: Path) -> dict:

@@ -7,7 +7,11 @@ name = "bat-chirp-geometry"
 version = "0.1.0"
 description = "Shared square-normalized time-frequency geometry for bat chirp scoring"
 requires-python = ">=3.10"
-dependencies = ["numpy"]
+dependencies = ["numpy", "scipy", "soundfile", "librosa", "shapely",
+                "pandas", "plotly", "PyYAML>=6.0"]
+
+[project.optional-dependencies]
+test = ["pytest"]
 
 [tool.setuptools]
 packages = ["chirp_geometry", "laboratory"]
@@ -15,3 +19,8 @@ packages = ["chirp_geometry", "laboratory"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = [
+    "integration: requires a sibling source checkout (synthetic audio only)",
+    "corpus: requires explicit access to a private real corpus",
+]
