@@ -88,7 +88,10 @@ def _read_cache(path: Path) -> dict | None:
         return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(data.get("per_file"), list) and isinstance(data.get("details"), list):
+        if (isinstance(data.get("per_file"), list) and data["per_file"]
+                and isinstance(data.get("details"), list) and "traceback" not in data
+                and all(isinstance(row, dict) and "error" not in row for row in data["per_file"])
+                and all(isinstance(row, dict) for row in data["details"])):
             return data
     except (OSError, ValueError, AttributeError):
         pass

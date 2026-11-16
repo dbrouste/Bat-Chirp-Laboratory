@@ -55,6 +55,16 @@ def collect_frozen_dataset(dataset: Path, *, partition: str = "calibration",
     conflicting = [name for name, splits in by_json.items() if len(splits) != 1]
     if conflicting:
         raise ValueError("One annotation JSON appears in multiple partitions")
+    for field in ("session", "wav_sha256"):
+        memberships: dict[str, set[str]] = {}
+        for row in rows:
+            if row["partition"] not in {"calibration", "test"}:
+                raise ValueError("Unknown dataset partition")
+            value = str(row[field] or "").replace("\\", "/").casefold()
+            if value:
+                memberships.setdefault(value, set()).add(row["partition"])
+        if any(len(splits) > 1 for splits in memberships.values()):
+            raise ValueError(f"Dataset leakage across calibration/test: {field}")
 
     selected = [r for r in rows if r["partition"] == partition]
     if not selected:
@@ -78,6 +88,9 @@ def collect_frozen_dataset(dataset: Path, *, partition: str = "calibration",
         if not raw_json.casefold().startswith(f"{partition}/annotations/"):
             raise ValueError(f"Invalid partition JSON path: {raw_json!r}")
         annotation = _within(root, raw_json)
+        if (not wav.is_relative_to(root / partition / "wav")
+                or not annotation.is_relative_to(root / partition / "annotations")):
+            raise ValueError("Resolved calibration paths must not enter the reserved test or other directories")
         if not wav.is_file() or not annotation.is_file():
             raise FileNotFoundError(f"Frozen dataset WAV/JSON missing: {raw_wav}")
         if verify_hashes:

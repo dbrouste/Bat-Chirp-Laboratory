@@ -84,6 +84,40 @@ def test_frozen_manifest_cannot_escape_directory(tmp_path):
         collect_frozen_dataset(dataset)
 
 
+@pytest.mark.parametrize("field", ["session", "wav_sha256"])
+def test_frozen_manifest_rejects_leakage_before_opening_any_audio(tmp_path, monkeypatch, field):
+    from laboratory import frozen_dataset
+
+    dataset, rows = _make_dataset(tmp_path)
+    calibration = next(row for row in rows if row["partition"] == "calibration")
+    reserved = next(row for row in rows if row["partition"] == "test")
+    calibration[field] = reserved[field]
+    with (dataset / "manifest.csv").open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=rows[0])
+        writer.writeheader()
+        writer.writerows(rows)
+    monkeypatch.setattr(frozen_dataset, "sha256_file", lambda path: pytest.fail("No content should be opened"))
+    with pytest.raises(ValueError, match="leakage"):
+        collect_frozen_dataset(dataset)
+
+
+def test_resolved_path_cannot_redirect_calibration_into_test(tmp_path, monkeypatch):
+    from laboratory import frozen_dataset
+
+    dataset, _ = _make_dataset(tmp_path)
+    original = frozen_dataset._within
+
+    def redirected(root, relative):
+        if relative.startswith("calibration/wav/"):
+            return root / "test" / "wav" / "closed.wav"
+        return original(root, relative)
+
+    monkeypatch.setattr(frozen_dataset, "_within", redirected)
+    monkeypatch.setattr(frozen_dataset, "sha256_file", lambda path: pytest.fail("No content should be opened"))
+    with pytest.raises(ValueError, match="reserved test"):
+        collect_frozen_dataset(dataset)
+
+
 def test_baseline_runner_uses_manifest_and_is_read_only(tmp_path, monkeypatch):
     dataset, rows = _make_dataset(tmp_path)
     originals = {

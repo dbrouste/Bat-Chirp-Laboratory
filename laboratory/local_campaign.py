@@ -88,6 +88,8 @@ def run_key(dataset, *, max_chirps, skip_chirps, fft_size, stft_hop,
 
 def connect_db(path):
     db = sqlite3.connect(str(path))
+    db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA busy_timeout=5000")
     db.execute("""CREATE TABLE IF NOT EXISTS experiments (
         run_id TEXT PRIMARY KEY, window_points INTEGER NOT NULL,
         state TEXT NOT NULL, created_at TEXT NOT NULL,
@@ -314,7 +316,13 @@ def run_campaign(dataset, output, *, analyser_root=None, max_chirps=30,
 
 
 def main(argv=None):
-    parser=argparse.ArgumentParser(description=__doc__)
+    arguments = sys.argv[1:] if argv is None else argv
+    if arguments and arguments[0] in {"prepare", "start", "status", "stop", "resume", "demo"}:
+        from .campaign_control import main as control_main
+        return control_main(arguments)
+    parser=argparse.ArgumentParser(description=__doc__, epilog=(
+        "Detector campaigns: prepare, start, status, stop, resume, demo. "
+        "Use python -m laboratory.local_campaign COMMAND --help."))
     parser.add_argument("--dataset",type=Path,required=True)
     parser.add_argument("--output",type=Path,required=True)
     parser.add_argument("--analyser-root",type=Path)
