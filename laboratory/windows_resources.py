@@ -31,6 +31,25 @@ class ExtendedLimits(ctypes.Structure):
                 ("peak_process_memory", ctypes.c_size_t), ("peak_job_memory", ctypes.c_size_t)]
 
 
+class ProcessMemory(ctypes.Structure):
+    _fields_ = [("size", wintypes.DWORD), ("faults", wintypes.DWORD)] + [
+        (name, ctypes.c_size_t) for name in ("peak_working", "working", "peak_paged", "paged",
+        "peak_nonpaged", "nonpaged", "pagefile", "peak_pagefile", "private")]
+
+
+def private_commit_bytes():
+    if os.name != "nt":
+        raise RuntimeError("Windows private commit accounting is required")
+    api = ctypes.WinDLL("psapi", use_last_error=True)
+    api.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD]
+    api.GetProcessMemoryInfo.restype = wintypes.BOOL
+    counters = ProcessMemory()
+    counters.size = ctypes.sizeof(counters)
+    if not api.GetProcessMemoryInfo(wintypes.HANDLE(-1), ctypes.byref(counters), counters.size):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return counters.private
+
+
 class WindowsJob:
     def __init__(self, memory_bytes):
         if os.name != "nt":
@@ -96,12 +115,12 @@ class WindowsJob:
 
 
 @contextmanager
-def campaign_lock(folder: Path):
+def campaign_lock(folder: Path, name="campaign.lock"):
     if os.name != "nt":
         raise RuntimeError("Windows file locking is required")
     import msvcrt
 
-    with (folder / "campaign.lock").open("a+b") as stream:
+    with (folder / name).open("a+b") as stream:
         if stream.tell() == 0:
             stream.write(b"0")
             stream.flush()
@@ -120,6 +139,7 @@ def campaign_lock(folder: Path):
 def run_bounded(command, *, folder, gate, log, seconds, memory_bytes, min_free_bytes, stop_requested):
     started = time.monotonic()
     process = None
+    assigned = False
     status, error = "failed", None
     environment = dict(os.environ)
     for name in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
@@ -132,6 +152,7 @@ def run_bounded(command, *, folder, gate, log, seconds, memory_bytes, min_free_b
                                        env=environment, stdout=stream, stderr=subprocess.STDOUT,
                                        creationflags=subprocess.CREATE_NO_WINDOW)
             job.assign(process)
+            assigned = True
             Path(gate).write_text("assigned", encoding="utf-8")
             while process.poll() is None:
                 if stop_requested():
@@ -165,4 +186,6 @@ def run_bounded(command, *, folder, gate, log, seconds, memory_bytes, min_free_b
                 process.wait(timeout=10)
         peak = job.information().peak_job_memory
     return {"status": status, "error": error, "elapsed_s": time.monotonic() - started,
-            "peak_job_commit_bytes": peak, "memory_limit_bytes": memory_bytes}
+            "peak_job_commit_bytes": peak, "memory_limit_bytes": memory_bytes,
+            "job_memory_limit_verified": True, "process_tree_assigned": assigned,
+            "peak_counter_scope": "raw Windows PeakJobMemoryUsed; rejected commits may affect its historical peak"}

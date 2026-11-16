@@ -25,7 +25,7 @@ def _within(dataset: Path, relative: str) -> Path:
 
 
 def collect_frozen_dataset(dataset: Path, *, partition: str = "calibration",
-                           verify_hashes: bool = True) -> tuple[dict[str, dict], dict]:
+                           verify_hashes: bool = True, selection_file: Path | None = None) -> tuple[dict[str, dict], dict]:
     """Return a safe per-WAV input mapping and audit metadata.
 
     Test is deliberately NOT accepted as an argument here. The final held-out
@@ -66,7 +66,17 @@ def collect_frozen_dataset(dataset: Path, *, partition: str = "calibration",
         if any(len(splits) > 1 for splits in memberships.values()):
             raise ValueError(f"Dataset leakage across calibration/test: {field}")
 
-    selected = [r for r in rows if r["partition"] == partition]
+    calibration = [r for r in rows if r["partition"] == partition]
+    selection = None
+    if selection_file is not None:
+        from .pilot_selection import load_selection
+        selection = load_selection(root, selection_file)
+        names = {row["file"] for row in selection["files"]}
+        selected = [row for row in calibration if row["dataset_wav"].replace("\\", "/") in names]
+        if len(selected) != len(names):
+            raise ValueError("Selection membership mismatch")
+    else:
+        selected = calibration
     if not selected:
         raise ValueError("No calibration WAV in frozen dataset manifest")
 
@@ -115,12 +125,18 @@ def collect_frozen_dataset(dataset: Path, *, partition: str = "calibration",
         records[raw_wav] = mapping[key]
 
     for annotation, related in json_rows.items():
-        expected = {Path(str(r["dataset_wav"]).replace("\\", "/")).name for r in related}
-        if expected != set(json_cache[annotation]) or len(expected) != len(related):
+        members = [row for row in calibration if _within(root, row["dataset_json"]) == annotation] if selection else related
+        expected = {Path(str(r["dataset_wav"]).replace("\\", "/")).name for r in members}
+        if expected != set(json_cache[annotation]) or len(expected) != len(members):
             raise ValueError(
                 f"Manifest and frozen JSON WAV membership differ: {annotation}")
 
-    return dict(sorted(records.items())), {
+    if selection:
+        from .pilot_selection import reference_class
+        for row in selection["files"]:
+            if reference_class(records[row["file"]]) != row["reference_class"]:
+                raise ValueError("Selection reference label changed")
+    provenance = {
         "dataset": str(root),
         "partition": partition,
         "manifest_sha256": sha256_file(manifest),
@@ -128,3 +144,7 @@ def collect_frozen_dataset(dataset: Path, *, partition: str = "calibration",
         "session_count": len(json_rows),
         "hashes_verified": verify_hashes,
     }
+    if selection:
+        provenance["selection_sha256"] = sha256_file(Path(selection_file))
+        provenance["cohort"] = "development"
+    return dict(sorted(records.items())), provenance

@@ -86,3 +86,28 @@ def test_timeout_kills_descendants_as_well_as_root(tmp_path):
             assert exit_code.value != 259
         finally:
             kernel.CloseHandle(handle)
+
+
+def test_job_memory_limit_is_shared_by_parent_and_all_children(tmp_path):
+    child_code = ("import json,time; from laboratory.windows_resources import private_commit_bytes\n"
+                  "before=private_commit_bytes()\n"
+                  "try:\n memory=bytearray(200*1024**2); failed=False\n"
+                  "except MemoryError:\n failed=True\n"
+                  "after=private_commit_bytes()\n"
+                  "print(json.dumps({'before':before,'after':after,'failed':failed}),flush=True)\n"
+                  "time.sleep(1)")
+    payload = ("import subprocess,json\n"
+               "from laboratory.windows_resources import private_commit_bytes\n"
+               "parent_memory=bytearray(80*1024**2)\n"
+               f"code={child_code!r}\n"
+               "children=[subprocess.Popen([sys.executable,'-c',code],stdout=subprocess.PIPE,text=True) for index in range(2)]\n"
+               "records=[json.loads(child.stdout.readline()) for child in children]\n"
+               "assert any(record['failed'] for record in records),records\n"
+               "assert all(record['after']-record['before']<5*1024**2 for record in records if record['failed']),records\n"
+               "assert private_commit_bytes()+sum(record['after'] for record in records)<=384*1024**2,records\n"
+               "print(json.dumps(records),flush=True)\n"
+               "assert all(child.wait()==0 for child in children)\n")
+    result = bounded(tmp_path, payload, memory=384*1024**2)
+    assert result["status"] == "complete"
+    assert result["job_memory_limit_verified"] and result["process_tree_assigned"]
+    assert '"failed": true' in (tmp_path / "execution.log").read_text(encoding="utf-8")

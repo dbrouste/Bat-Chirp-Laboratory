@@ -59,8 +59,9 @@ def database(folder):
         connection.close()
 
 
-def input_identity(dataset):
-    records, provenance = collect_frozen_dataset(dataset)
+def input_identity(dataset, selection_file=None):
+    records, provenance = collect_frozen_dataset(dataset, **(
+        {"selection_file": selection_file} if selection_file is not None else {}))
     for record in records.values():
         if record.get("review_status") == "no_chirp" and any(
             not isinstance(curve, dict) or curve.get("source") == "manual"
@@ -96,7 +97,7 @@ def options_with(overrides):
 
 def prepare(folder, dataset, processing_root, *, variants=(), baseline=None, workers=4,
             experiment_seconds=600, campaign_seconds=3600, memory_gb=16,
-            min_free_gb=1, max_experiments=12, max_attempts=3, max_output_gb=None):
+            min_free_gb=1, max_experiments=12, max_attempts=3, max_output_gb=None, selection_file=None, global_memory=False):
     folder, dataset, processing_root = (Path(path).resolve() for path in (folder, dataset, processing_root))
     if folder.exists():
         raise ValueError("Campaign directory already exists; use status/resume, never overwrite")
@@ -133,7 +134,7 @@ def prepare(folder, dataset, processing_root, *, variants=(), baseline=None, wor
         raise ValueError("Duplicate parameter sets are not independent experiments")
     if len({plan["name"] for plan in plans}) != len(plans):
         raise ValueError("Duplicate experiment names")
-    identity = input_identity(dataset)
+    identity = input_identity(dataset, selection_file)
     protocol_path = runner.ROOT / "experiments" / "scientific_protocol_v1.json"
     definition = {"schema": SCHEMA, "created_utc": utc_now(), "dataset": str(dataset),
                   "processing_root": str(processing_root), "identity": identity,
@@ -143,6 +144,10 @@ def prepare(folder, dataset, processing_root, *, variants=(), baseline=None, wor
                   "scientific_protocol_sha256": sha256_file(protocol_path),
                   "limits": limits, "warnings": WARNINGS, "experiments": plans,
                   "partition": "calibration", "test_access": False, "automatic_promotion": False}
+    if selection_file is not None:
+        definition["selection_file"] = str(Path(selection_file).resolve())
+    if global_memory:
+        definition["global_memory"] = True
     for ordinal, plan in enumerate(plans):
         plan["job_id"] = f"{ordinal:03d}_{stable_hash(plan['options'])[:12]}"
     definition["baseline_identity"] = stable_hash({"code": definition["code_fingerprint"],
@@ -177,7 +182,7 @@ def verify_environment(definition):
     protocol = runner.ROOT / "experiments" / "scientific_protocol_v1.json"
     if sha256_file(protocol) != definition["scientific_protocol_sha256"]:
         raise ValueError("Scientific protocol changed; prepare a new campaign")
-    if input_identity(Path(definition["dataset"])) != definition["identity"]:
+    if input_identity(Path(definition["dataset"]), definition.get("selection_file")) != definition["identity"]:
         raise ValueError("Corpus content or manifest changed; prepare a new campaign")
 
 
@@ -194,6 +199,11 @@ def validated_report(path, definition, options):
             or (metadata.get("frozen_dataset") or {}).get("hashes_verified") is not True
             or (metadata.get("frozen_dataset") or {}).get("manifest_sha256") != definition["identity"]["provenance"]["manifest_sha256"]):
         raise ValueError("Incomplete or incompatible benchmark result")
+    rows = report["per_file"]
+    if (len(rows) != len(definition["identity"]["inputs"])
+            or {row.get("file") for row in rows} != set(definition["identity"]["inputs"])
+            or any("error" in row for row in rows)):
+        raise ValueError("Benchmark does not cover exactly the selected inputs")
     return report
 
 
@@ -358,6 +368,9 @@ def export_reports(folder):
               "execution_seconds_charged": sum(item["elapsed_s"] if item["elapsed_s"] is not None else item["reserved_s"] for item in attempts),
               "limits": definition["limits"], "warnings": WARNINGS, "jobs": jobs, "attempts": attempts,
               "final_false_trajectory_metric": None, "automatic_promotion": False, "test_access": False}
+    if definition.get("global_memory"):
+        from .global_campaign import usage
+        report["global_supervision"] = usage(folder)
     for job in jobs:
         path = benchmark_path(folder, job["job_id"])
         if job["status"] == "complete" and (not path.is_file() or sha256_file(path) != job["report_sha256"]):
@@ -427,7 +440,8 @@ def execute_worker(folder, job_id, attempt_id):
         plan = next(plan for plan in definition["experiments"] if plan["job_id"] == job_id)
         runner.run(dataset=Path(definition["dataset"]), out=benchmark_path(folder, job_id).parent,
                    processing_root=Path(definition["processing_root"]), workers=definition["limits"]["workers"],
-                   options=plan["options"], include_reviewed_negatives=True)
+                   options=plan["options"], include_reviewed_negatives=True,
+                   **({"selection_file": Path(definition["selection_file"])} if definition.get("selection_file") else {}))
         verify_environment(definition)
         receipt["report_sha256"] = sha256_file(benchmark_path(folder, job_id))
     runner._write_json_atomic(directory / "receipt.json", receipt)
@@ -481,10 +495,12 @@ def main(argv=None):
             command.add_argument("--max-output-gb", type=float)
             command.add_argument("--max-experiments", type=int, default=12)
             command.add_argument("--max-attempts", type=int, default=3)
+            command.add_argument("--global-memory", action="store_true")
         if name == "prepare":
             command.add_argument("--dataset", type=Path, required=True)
             command.add_argument("--variants", type=Path)
             command.add_argument("--baseline-options", type=Path)
+            command.add_argument("--selection", type=Path)
         if name in {"start", "resume", "demo"}:
             command.add_argument("--max-new", type=int)
             command.add_argument("--retry-failed", action="store_true")
@@ -514,9 +530,15 @@ def main(argv=None):
             report = prepare(folder, dataset, args.processing_root, variants=variants, baseline=baseline,
                 workers=args.workers, experiment_seconds=args.experiment_seconds, campaign_seconds=args.campaign_seconds,
                 memory_gb=args.memory_gb, min_free_gb=args.min_free_gb, max_experiments=args.max_experiments,
-                max_attempts=args.max_attempts, max_output_gb=args.max_output_gb)
+                max_attempts=args.max_attempts, max_output_gb=args.max_output_gb,
+                selection_file=args.selection if args.command == "prepare" else None,
+                global_memory=args.global_memory)
         if args.command in {"start", "resume", "demo"}:
-            report = run_campaign(folder, resume=args.command == "resume", max_new=args.max_new, retry_failed=args.retry_failed)
+            execute = run_campaign
+            if load_definition(folder).get("global_memory"):
+                from .global_campaign import run_global
+                execute = run_global
+            report = execute(folder, resume=args.command == "resume", max_new=args.max_new, retry_failed=args.retry_failed)
         elif args.command == "status":
             report = export_reports(folder)
             while args.watch and report["status"] == "running":

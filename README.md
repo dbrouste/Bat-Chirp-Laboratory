@@ -194,6 +194,8 @@ dans le dossier voisin. Il est ignoré sinon.
 
 ## Documentation
 
+- [Premier pilote réel borné, sélection de développement et reprise](docs/PILOTE_REEL_WINDOWS.md)
+
 - [Orchestration locale Windows : budgets, arrêt et reprise](docs/ORCHESTRATION_WINDOWS.md)
 
 - [Protocole scientifique V1 et qualité des cohortes](docs/PROTOCOLE_SCIENTIFIQUE_V1.md)

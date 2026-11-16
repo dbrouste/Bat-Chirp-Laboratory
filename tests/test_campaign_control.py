@@ -41,7 +41,9 @@ def campaign(tmp_path, monkeypatch):
                       within_snr_tolerance_fraction=0.9, mean_full_interval_error_khz=0.5,
                       mean_normalized_error=0.2, coverage_fraction=1, start_error_ms=0, end_error_ms=0,
                       mean_geometric_error_khz_eq=0.3, geometric_coverage_fraction=1)
-        per_file = [dict(file=detail["file"], annotated=1, candidates=1, matched=1, tracking_succeeded=1)]
+        per_file = [dict(file=detail["file"], annotated=1, candidates=1, matched=1, tracking_succeeded=1),
+                    dict(file="calibration/wav/synthetic/negative.wav", annotated=0, candidates=0,
+                         matched=0, tracking_succeeded=0, reference_class="reviewed_no_chirp")]
         totals = summarize_results(per_file, [detail])
         totals["reviewed_no_chirp"] = dict(wav_count=1, wavs_with_candidate_alert=0, candidate_alerts=0,
                                            wav_false_alarm_fraction=0)
@@ -215,3 +217,34 @@ def test_status_identifies_a_missing_supervisor_without_changing_history(campaig
     assert control.export_reports(folder)["status"] == "interrupted_owner_missing"
     with control.database(folder) as connection:
         assert connection.execute("SELECT status FROM detector_control").fetchone()[0] == "running"
+
+
+def test_pilot_report_reuses_metrics_and_requires_global_memory_proof(campaign, tmp_path):
+    import csv
+    from laboratory import pilot_report, pilot_selection
+    from laboratory.dataset import sha256_file, stable_hash
+
+    folder, dataset, processing, _, _ = campaign
+    with (dataset / "manifest.csv").open(encoding="utf-8", newline="") as stream:
+        assignments = [{**row, "cohort": "development"} for row in csv.DictReader(stream)]
+    snapshot = {"schema": "chirp_cohort_snapshot_v1", "manifest_sha256": sha256_file(dataset / "manifest.csv"),
+                "assignments": assignments}
+    snapshot["snapshot_id"] = stable_hash(snapshot)
+    snapshot_path = tmp_path / "snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+    selection_dir = tmp_path / "selection"
+    pilot_selection.prepare_selection(dataset, snapshot_path, selection_dir)
+    control.prepare(folder, dataset, processing, selection_file=selection_dir / "selection.json", global_memory=True, memory_gb=4)
+    assert control.run_campaign(folder)["status"] == "complete"
+    with pytest.raises(ValueError, match="memory enforcement"):
+        pilot_report.write_report(folder)
+    directory = folder / "global_runs" / "test"
+    directory.mkdir(parents=True)
+    (directory / "reservation.json").write_text('{"reserved_s":60}', encoding="utf-8")
+    (directory / "outcome.json").write_text(json.dumps({"elapsed_s":1, "status":"complete",
+        "scope":"supervisor_and_all_descendant_workers_commit_memory", "peak_job_commit_bytes":100,
+        "memory_limit_bytes":4*1024**3, "job_memory_limit_verified":True, "process_tree_assigned":True}), encoding="utf-8")
+    result = pilot_report.write_report(folder)
+    assert result["scientific_results"]["matched"] == 1
+    assert result["final_false_trajectories"] is None
+    assert (folder / "pilot_metrics.csv").is_file() and (folder / "pilot_report.html").is_file()

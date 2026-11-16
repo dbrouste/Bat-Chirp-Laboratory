@@ -164,7 +164,7 @@ def run(*, annotations: Path | None = None, wav_dir: Path | None = None,
         dataset: Path | None = None, out: Path, workers: int = 4,
         max_files: int | None = None, options: dict | None = None,
         use_cache: bool = True, include_reviewed_negatives: bool = False,
-        processing_root: Path = DEFAULT_PROCESSING_ROOT) -> dict:
+        processing_root: Path = DEFAULT_PROCESSING_ROOT, selection_file: Path | None = None) -> dict:
     """Evaluate WAVs independently and aggregate using the existing benchmark.
 
     Unlike a parameter sweep, a run never writes to the input WAV or annotation
@@ -174,6 +174,8 @@ def run(*, annotations: Path | None = None, wav_dir: Path | None = None,
         raise ValueError("workers must be between 1 and 8")
     if include_reviewed_negatives and dataset is None:
         raise ValueError("Reviewed negatives require a frozen --dataset")
+    if selection_file is not None and dataset is None:
+        raise ValueError("Selection requires a frozen dataset")
     if max_files is not None and max_files < 1:
         raise ValueError("max_files must be positive")
     params = dict(DEFAULT_OPTIONS)
@@ -209,7 +211,8 @@ def run(*, annotations: Path | None = None, wav_dir: Path | None = None,
         dataset_root = Path(dataset).resolve()
         if out == dataset_root or out.is_relative_to(dataset_root):
             raise ValueError("Benchmark output must be outside the frozen dataset")
-        records, dataset_provenance = collect_frozen_dataset(dataset_root)
+        records, dataset_provenance = collect_frozen_dataset(dataset_root, **(
+            {"selection_file": selection_file} if selection_file is not None else {}))
         wav_dir = dataset_root
         annotation_description = dataset_root / "manifest.csv"
     else:
