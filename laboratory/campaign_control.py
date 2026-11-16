@@ -97,7 +97,8 @@ def options_with(overrides):
 
 def prepare(folder, dataset, processing_root, *, variants=(), baseline=None, workers=4,
             experiment_seconds=600, campaign_seconds=3600, memory_gb=16,
-            min_free_gb=1, max_experiments=12, max_attempts=3, max_output_gb=None, selection_file=None, global_memory=False):
+            min_free_gb=1, max_experiments=12, max_attempts=3, max_output_gb=None, selection_file=None, global_memory=False,
+            diagnostic_probe=False):
     folder, dataset, processing_root = (Path(path).resolve() for path in (folder, dataset, processing_root))
     if folder.exists():
         raise ValueError("Campaign directory already exists; use status/resume, never overwrite")
@@ -148,6 +149,10 @@ def prepare(folder, dataset, processing_root, *, variants=(), baseline=None, wor
         definition["selection_file"] = str(Path(selection_file).resolve())
     if global_memory:
         definition["global_memory"] = True
+    if diagnostic_probe:
+        if selection_file is None or not global_memory or variants:
+            raise ValueError("Diagnostic probe requires a development selection, global budgets and baseline only")
+        definition["diagnostic_probe"] = True
     for ordinal, plan in enumerate(plans):
         plan["job_id"] = f"{ordinal:03d}_{stable_hash(plan['options'])[:12]}"
     definition["baseline_identity"] = stable_hash({"code": definition["code_fingerprint"],
@@ -194,6 +199,7 @@ def validated_report(path, definition, options):
     report = json.loads(path.read_text(encoding="utf-8"))
     metadata = report["metadata"]
     if (metadata.get("status") != "complete" or metadata.get("code_fingerprint") != definition["code_fingerprint"]
+            or bool(metadata.get("diagnostic_probe")) != bool(definition.get("diagnostic_probe"))
             or metadata.get("options") != options or metadata.get("input_fingerprints") != definition["identity"]["inputs"]
             or (metadata.get("frozen_dataset") or {}).get("partition") != "calibration"
             or (metadata.get("frozen_dataset") or {}).get("hashes_verified") is not True
@@ -204,6 +210,17 @@ def validated_report(path, definition, options):
             or {row.get("file") for row in rows} != set(definition["identity"]["inputs"])
             or any("error" in row for row in rows)):
         raise ValueError("Benchmark does not cover exactly the selected inputs")
+    if definition.get("diagnostic_probe"):
+        diagnostics = report.get("diagnostics", {})
+        if set(diagnostics) != set(definition["identity"]["inputs"]):
+            raise ValueError("Diagnostic traces do not cover the selected inputs")
+        for diagnostic in diagnostics.values():
+            proof = diagnostic.get("equivalence", {})
+            if not all(proof.get(key) is True for key in (
+                    "benchmark_numeric_and_decisions_exact", "candidate_arrays_exact", "matched_trajectory_arrays_exact")):
+                raise ValueError("Instrumentation non-regression proof is missing")
+            if diagnostic.get("negative") is not None and proof.get("negative_final_arrays_exact") is not True:
+                raise ValueError("Negative output equivalence proof is missing")
     return report
 
 
@@ -441,7 +458,8 @@ def execute_worker(folder, job_id, attempt_id):
         runner.run(dataset=Path(definition["dataset"]), out=benchmark_path(folder, job_id).parent,
                    processing_root=Path(definition["processing_root"]), workers=definition["limits"]["workers"],
                    options=plan["options"], include_reviewed_negatives=True,
-                   **({"selection_file": Path(definition["selection_file"])} if definition.get("selection_file") else {}))
+                   **({"selection_file": Path(definition["selection_file"])} if definition.get("selection_file") else {}),
+                   **({"diagnostic_probe": True} if definition.get("diagnostic_probe") else {}))
         verify_environment(definition)
         receipt["report_sha256"] = sha256_file(benchmark_path(folder, job_id))
     runner._write_json_atomic(directory / "receipt.json", receipt)
@@ -496,6 +514,7 @@ def main(argv=None):
             command.add_argument("--max-experiments", type=int, default=12)
             command.add_argument("--max-attempts", type=int, default=3)
             command.add_argument("--global-memory", action="store_true")
+            command.add_argument("--diagnostic-probe", action="store_true")
         if name == "prepare":
             command.add_argument("--dataset", type=Path, required=True)
             command.add_argument("--variants", type=Path)
@@ -532,7 +551,7 @@ def main(argv=None):
                 memory_gb=args.memory_gb, min_free_gb=args.min_free_gb, max_experiments=args.max_experiments,
                 max_attempts=args.max_attempts, max_output_gb=args.max_output_gb,
                 selection_file=args.selection if args.command == "prepare" else None,
-                global_memory=args.global_memory)
+                global_memory=args.global_memory, diagnostic_probe=args.diagnostic_probe)
         if args.command in {"start", "resume", "demo"}:
             execute = run_campaign
             if load_definition(folder).get("global_memory"):

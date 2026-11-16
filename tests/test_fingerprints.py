@@ -133,7 +133,7 @@ def test_runtime_records_all_installed_dependency_versions(monkeypatch):
     assert fingerprints.runtime_identity()["packages"][0] == ("plotly", "3")
 
 
-@pytest.mark.parametrize("change", ["parameters", "audio", "annotations", "code", "dependencies"])
+@pytest.mark.parametrize("change", ["parameters", "audio", "annotations", "code", "dependencies", "diagnostic_probe"])
 def test_runner_reuses_only_identical_experiments(tmp_path, source_trees, monkeypatch, change):
     from laboratory import report
 
@@ -148,10 +148,13 @@ def test_runner_reuses_only_identical_experiments(tmp_path, source_trees, monkey
     annotations.write_text(json.dumps({"files": {"sample.wav": {"chirps": []}}}), encoding="utf-8")
     calls = []
 
-    def fake_worker(name, record, wav_dir, options, processing_root):
+    def fake_worker(name, record, wav_dir, options, processing_root, **kwargs):
         calls.append(name)
-        return dict(file=name, elapsed_s=0, details=[],
-                    per_file=[dict(file=name, annotated=0, candidates=0, matched=0)])
+        result = dict(file=name, elapsed_s=0, details=[],
+                      per_file=[dict(file=name, annotated=0, candidates=0, matched=0)])
+        if kwargs.get("diagnostic_probe"):
+            result["diagnostics"] = {"observed": True}
+        return result
 
     monkeypatch.setattr(runner, "_worker", fake_worker)
     monkeypatch.setattr(report, "write_html", lambda data, path: path.write_text("report", encoding="utf-8"))
@@ -167,6 +170,8 @@ def test_runner_reuses_only_identical_experiments(tmp_path, source_trees, monkey
         annotations.write_text(json.dumps({"files": {"sample.wav": {"chirps": [], "review": "changed"}}}), encoding="utf-8")
     elif change == "code":
         evaluator.write_text("def evaluate(geometry_mode=None): return None", encoding="utf-8")
+    elif change == "diagnostic_probe":
+        settings["diagnostic_probe"] = True
     else:
         monkeypatch.setattr(fingerprints, "runtime_identity", lambda: {"packages": [("numpy", "next")]})
     assert runner.run(**settings)["metadata"]["files_from_cache"] == 0

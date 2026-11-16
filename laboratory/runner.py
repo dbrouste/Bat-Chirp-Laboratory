@@ -59,7 +59,7 @@ def git_info(repo: Path) -> dict:
 
 
 def _worker(name: str, record: dict, wav_root: str, options: dict,
-            processing_root: str) -> dict:
+            processing_root: str, diagnostic_probe: bool = False) -> dict:
     """One WAV per worker: no shared mutable processing state."""
     started = perf_counter()
     try:
@@ -73,9 +73,17 @@ def _worker(name: str, record: dict, wav_root: str, options: dict,
             annotation = Path(folder) / "single.json"
             annotation.write_text(json.dumps({"files": {name: record}},
                                              ensure_ascii=False), encoding="utf-8")
-            report = evaluate(annotation, wav_root, **options)
-        return {"file": name, "per_file": report["per_file"],
+            diagnostics = None
+            if diagnostic_probe:
+                from .detection_probe import evaluate_with_probe
+                report, diagnostics = evaluate_with_probe(evaluate, annotation, wav_root, options)
+            else:
+                report = evaluate(annotation, wav_root, **options)
+        result = {"file": name, "per_file": report["per_file"],
                 "details": report["details"], "elapsed_s": perf_counter() - started}
+        if diagnostics is not None:
+            result["diagnostics"] = diagnostics
+        return result
     except Exception as exc:
         return {"file": name,
                 "per_file": [{"file": name, "error": f"{type(exc).__name__}: {exc}"}],
@@ -164,7 +172,8 @@ def run(*, annotations: Path | None = None, wav_dir: Path | None = None,
         dataset: Path | None = None, out: Path, workers: int = 4,
         max_files: int | None = None, options: dict | None = None,
         use_cache: bool = True, include_reviewed_negatives: bool = False,
-        processing_root: Path = DEFAULT_PROCESSING_ROOT, selection_file: Path | None = None) -> dict:
+        processing_root: Path = DEFAULT_PROCESSING_ROOT, selection_file: Path | None = None,
+        diagnostic_probe: bool = False) -> dict:
     """Evaluate WAVs independently and aggregate using the existing benchmark.
 
     Unlike a parameter sweep, a run never writes to the input WAV or annotation
@@ -296,7 +305,7 @@ def run(*, annotations: Path | None = None, wav_dir: Path | None = None,
     cache_count = 0
     for name, record in records.items():
         key = stable_hash({"name": name, "input": inputs[name],
-                           "code": source_hash, "options": params})
+                           "code": source_hash, "options": params, "diagnostic_probe": diagnostic_probe})
         cache_file = cache_root / f"{key}.json"
         cached = _read_cache(cache_file) if use_cache else None
         if cached is None:
@@ -307,7 +316,7 @@ def run(*, annotations: Path | None = None, wav_dir: Path | None = None,
     if workers == 1:
         for name, record, cache_file in pending:
             result = _worker(name, record, str(wav_dir), params,
-                             str(processing_root))
+                             str(processing_root), **({"diagnostic_probe": True} if diagnostic_probe else {}))
             results[name] = result
             if "traceback" not in result and not any(
                     "error" in row for row in result["per_file"]):
@@ -317,7 +326,7 @@ def run(*, annotations: Path | None = None, wav_dir: Path | None = None,
         with ProcessPoolExecutor(max_workers=workers,
                                  mp_context=multiprocessing.get_context("spawn")) as pool:
             futures = {pool.submit(_worker, name, record, str(wav_dir), params,
-                                   str(processing_root)):
+                                   str(processing_root), **({"diagnostic_probe": True} if diagnostic_probe else {})):
                        (name, cache_file) for name, record, cache_file in pending}
             for future in as_completed(futures):
                 name, cache_file = futures[future]
@@ -401,9 +410,12 @@ def run(*, annotations: Path | None = None, wav_dir: Path | None = None,
         "duration_s": duration,
         "per_file_duration_s": {row["file"]: row["elapsed_s"] for row in ordered},
         "input_fingerprints": inputs,
+        "diagnostic_probe": diagnostic_probe,
     }
     report = {"metadata": meta, "totals": totals,
               "per_file": per_file, "details": details}
+    if diagnostic_probe:
+        report["diagnostics"] = {item["file"]: item["diagnostics"] for item in ordered if "diagnostics" in item}
     run_dir = out / "runs" / meta["run_id"]
     json_path = run_dir / "report.json"
     _write_json_atomic(json_path, report)

@@ -194,6 +194,8 @@ dans le dossier voisin. Il est ignoré sinon.
 
 ## Documentation
 
+- [Diagnostic optionnel des échecs et non-régression scientifique](docs/DIAGNOSTIC_DETECTION_V1.md)
+
 - [Premier pilote réel borné, sélection de développement et reprise](docs/PILOTE_REEL_WINDOWS.md)
 
 - [Orchestration locale Windows : budgets, arrêt et reprise](docs/ORCHESTRATION_WINDOWS.md)
