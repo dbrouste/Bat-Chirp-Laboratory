@@ -1,0 +1,13 @@
+{
+  "schema": "chirp_cohort_protocol_v1",
+  "status": "draft_requires_scientific_approval",
+  "seed": "bat-chirp-cohorts-v1",
+  "validation_groups": 1,
+  "assignment": "sha256_ordered_session_components",
+  "test_policy": "preserve_existing_test_without_opening_files",
+  "negative_label": "review_status=no_chirp",
+  "positive_reference": "manual_validated_not_explicitly_excluded",
+  "scoring_protocol": "square_normals_v1",
+  "validation_independence": "unverified_prior_calibration_exposure",
+  "final_test_independence": "requires_human_attestation"
+}

@@ -194,6 +194,8 @@ dans le dossier voisin. Il est ignoré sinon.
 
 ## Documentation
 
+- [Protocole scientifique V1 et qualité des cohortes](docs/PROTOCOLE_SCIENTIFIQUE_V1.md)
+
 - [Mise en place Windows et limites actuelles](docs/LABORATOIRE_AUTONOME_WINDOWS.md)
 - [Architecture et feuille de route](docs/ARCHITECTURE.md)
 - [Spécification du score géométrique](docs/SPEC_Benchmark_Chirps_Geometrie_v0.1.md)
