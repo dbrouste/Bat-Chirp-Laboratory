@@ -194,6 +194,8 @@ dans le dossier voisin. Il est ignoré sinon.
 
 ## Documentation
 
+- [Préparation non destructive de la revue scientifique dans l'analyseur](docs/REVUE_SCIENTIFIQUE_V1.md)
+
 - [Diagnostic optionnel des échecs et non-régression scientifique](docs/DIAGNOSTIC_DETECTION_V1.md)
 
 - [Premier pilote réel borné, sélection de développement et reprise](docs/PILOTE_REEL_WINDOWS.md)
