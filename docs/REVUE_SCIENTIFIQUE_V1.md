@@ -1,5 +1,11 @@
 # Revue scientifique des erreurs du pilote de développement
 
+> Ce document décrit l'export sauvegardé au checkpoint de l'étape 5. Le mode
+> de saisie intégré à l'analyseur est désormais décrit dans
+> [l'intégration de la revue](INTEGRATION_REVUE_ANALYSEUR.md). Il permet de
+> réutiliser les exports V1 sans les régénérer. Les limitations GUI décrites
+> ci-dessous correspondent à l'état historique de ce checkpoint.
+
 ## Sauvegarde et portée
 
 L'étape 4 est sauvegardée au commit local `71e8250`, tag

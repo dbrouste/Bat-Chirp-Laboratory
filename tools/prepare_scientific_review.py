@@ -249,9 +249,10 @@ def export_review(campaign, output, *, max_copy_gb=1.0, min_free_gb=2.0):
     write_csv(output / "human_decisions.csv", [{"case_id": case["case_id"], "queue": case["queue"],
               **dict.fromkeys(DECISION_FIELDS, "")} for case in cases])
     write_json(output / "decision_schema.json", {
-        "signal_classification": ["true_chirp", "artifact", "echo", "ambiguous", "other"],
-        "annotation_assessment": ["correct", "annotation_error", "ambiguous", "not_applicable"],
-        "confidence": ["low", "medium", "high"], "required_for_completed_review": ["reviewer", "reviewed_utc", "evidence"],
+        "signal_classification": ["true_chirp", "artifact", "echo", "ambiguous", "other", "undetermined"],
+        "annotation_assessment": ["correct", "annotation_error", "ambiguous", "not_applicable", "not_evaluated"],
+        "confidence": ["low", "medium", "high"],
+        "required_for_completed_review": ["signal_classification", "annotation_assessment", "confidence", "reviewer", "reviewed_utc", "notes"],
         "other_requires_documented_cause": True, "automatic_actions": False,
         "note": "Signal identity and annotation quality are independent decisions. Never relabel no_chirp automatically."})
     control.verify_environment(definition)

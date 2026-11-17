@@ -194,6 +194,8 @@ dans le dossier voisin. Il est ignoré sinon.
 
 ## Documentation
 
+- [Revue intégrée dans l'analyseur : décisions, reprise et sauvegarde atomique](docs/INTEGRATION_REVUE_ANALYSEUR.md)
+
 - [Préparation non destructive de la revue scientifique dans l'analyseur](docs/REVUE_SCIENTIFIQUE_V1.md)
 
 - [Diagnostic optionnel des échecs et non-régression scientifique](docs/DIAGNOSTIC_DETECTION_V1.md)

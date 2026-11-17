@@ -197,10 +197,10 @@ def test_existing_analyser_resolver_accepts_all_review_queues(evidence, tmp_path
     source = Path(__file__).resolve().parents[2]/'Bat-Acoustic-Analyser/bat_analyser/annotation_quality.py'
     if not source.is_file():
         pytest.skip('Sibling analyser checkout required; synthetic data only')
-    spec = importlib.util.spec_from_file_location('review_consumer_check', source)
-    consumer = importlib.util.module_from_spec(spec)
-    monkeypatch.setitem(sys.modules, spec.name, consumer)
-    spec.loader.exec_module(consumer)
+    # The resolver now delegates review imports to its sibling module. Import
+    # it as a real package so relative imports exercise the actual integration.
+    monkeypatch.syspath_prepend(str(source.parents[1]))
+    consumer = importlib.import_module('bat_analyser.annotation_quality')
     monkeypatch.setattr(review, 'load_evidence', lambda path: evidence)
     monkeypatch.setattr(review.control, 'verify_environment', lambda definition: None)
     output = tmp_path/'review'
@@ -215,5 +215,11 @@ def test_existing_analyser_resolver_accepts_all_review_queues(evidence, tmp_path
             assert result.original_json.is_relative_to(output)
             if queue == 'negative_final':
                 assert row.raw['manual_chirp_id'] == ''
-                with pytest.raises(ValueError, match='manuelles'):
+                with pytest.raises(ValueError, match='manuelles|human_decisions'):
                     session.set_quality_status(row, 'verified_correct')
+        if getattr(session, 'scientific_review', False):
+            with (output/'human_decisions.csv').open(encoding='utf-8-sig') as stream:
+                assert len(session.decisions.latest) == sum(1 for _ in csv.DictReader(stream))
+    schema = json.loads((output/'decision_schema.json').read_text(encoding='utf-8'))
+    assert 'undetermined' in schema['signal_classification']
+    assert 'not_evaluated' in schema['annotation_assessment']
