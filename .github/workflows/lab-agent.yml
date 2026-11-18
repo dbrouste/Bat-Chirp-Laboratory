@@ -1,0 +1,89 @@
+name: Chirp Lab - Windows runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "smoke = runner check; tests = pytest; codex = one bounded proposal"
+        type: choice
+        required: true
+        default: smoke
+        options:
+          - smoke
+          - tests
+          - codex
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chirp-lab-local-runner
+  cancel-in-progress: false
+
+jobs:
+  laboratory:
+    name: "${{ inputs.mode }} on local Windows runner"
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Checkout current laboratory development code
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          persist-credentials: false
+
+      - name: Runner diagnostics
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Host "Runner: $env:RUNNER_NAME"
+          Write-Host "Repository SHA: $(git rev-parse HEAD)"
+          python --version
+          if ($LASTEXITCODE -ne 0) { throw "Python unavailable to runner account" }
+          if ('${{ inputs.mode }}' -eq 'codex') {
+            codex --version
+            if ($LASTEXITCODE -ne 0) { throw "Codex CLI unavailable to runner account" }
+          }
+
+      - name: Install lab dependencies
+        if: ${{ inputs.mode != 'smoke' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install -r requirements.txt pytest
+          if ($LASTEXITCODE -ne 0) { throw "Dependency installation failed" }
+
+      - name: Run laboratory unit tests
+        if: ${{ inputs.mode == 'tests' }}
+        run: |
+          python -m pytest -q --junitxml=lab-pytest.xml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run one bounded Codex code proposal
+        if: ${{ inputs.mode == 'codex' }}
+        env:
+          LOCAL_DATASET: ${{ vars.CHIRP_DATASET }}
+          LOCAL_PROCESSING_ROOT: ${{ vars.CHIRP_PROCESSING_ROOT }}
+          LOCAL_AGENT_SUMMARY: ${{ vars.CHIRP_AGENT_SUMMARY }}
+          LOCAL_CODE_OUTPUT: ${{ vars.CHIRP_CODE_OUTPUT }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCAL_DATASET -or -not $env:LOCAL_PROCESSING_ROOT -or -not $env:LOCAL_AGENT_SUMMARY -or -not $env:LOCAL_CODE_OUTPUT) {
+            throw "Set CHIRP_DATASET, CHIRP_PROCESSING_ROOT, CHIRP_AGENT_SUMMARY and CHIRP_CODE_OUTPUT as GitHub repository variables (absolute local Windows paths)."
+          }
+          foreach ($p in @($env:LOCAL_DATASET, $env:LOCAL_PROCESSING_ROOT, $env:LOCAL_AGENT_SUMMARY)) {
+            if (-not (Test-Path -LiteralPath $p)) { throw "Required local input missing: $p" }
+          }
+          python -m laboratory.code_agent --dataset "$env:LOCAL_DATASET" --processing-root "$env:LOCAL_PROCESSING_ROOT" --parameter-agent-summary "$env:LOCAL_AGENT_SUMMARY" --out "$env:LOCAL_CODE_OUTPUT" --workers 4 --max-total 3 --max-new 1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host "Pilot complete. Review the local code_agent_summary.json and isolated worktree before accepting any change."
+
+      - name: Publish unit test report
+        if: ${{ always() && inputs.mode == 'tests' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: chirp-lab-pytest-${{ github.run_id }}
+          path: lab-pytest.xml
+          if-no-files-found: ignore
+          retention-days: 7
