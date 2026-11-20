@@ -107,6 +107,10 @@ def connect_db(path):
         db.commit()
     except BaseException:
         try:
+            db.rollback()
+        except BaseException:
+            pass  # Still attempt close and preserve the initialization failure.
+        try:
             db.close()
         except BaseException:
             pass  # Preserve the initialization failure if cleanup also fails.
