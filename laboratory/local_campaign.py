@@ -171,6 +171,8 @@ def collect_rows(db, run_ids, thresholds):
 
 
 def save_reports(output, records, runs, definition):
+    from tempfile import NamedTemporaryFile
+
     records = list(records)
     all_rows = [r for r in records if r["region"]=="all"]
     # By construction, each chirp contributes multiple synthetic variants.
@@ -189,12 +191,20 @@ def save_reports(output, records, runs, definition):
     }
     (output/"campaign_summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2)+"\n",encoding="utf-8")
-    with (output/"campaign_scores.csv").open("w",encoding="utf-8-sig",newline="") as stream:
-        columns=("window","threshold","scenario","region","total","valid",
-                 "baseline_flagged","new_alerts","legacy_new_alerts")
-        writer=csv.DictWriter(stream,fieldnames=columns)
-        writer.writeheader()
-        writer.writerows(records)
+    stream = NamedTemporaryFile(mode="w", encoding="utf-8-sig", newline="",
+                               dir=output, prefix=".campaign_scores.",
+                               suffix=".tmp", delete=False)
+    temporary = Path(stream.name)
+    try:
+        with stream:
+            columns=("window","threshold","scenario","region","total","valid",
+                     "baseline_flagged","new_alerts","legacy_new_alerts")
+            writer=csv.DictWriter(stream,fieldnames=columns)
+            writer.writeheader()
+            writer.writerows(records)
+        temporary.replace(output/"campaign_scores.csv")
+    finally:
+        temporary.unlink(missing_ok=True)
 
     table = []
     for row in all_rows:
