@@ -203,7 +203,7 @@ def save_reports(output, records, runs, definition):
                 "no automatic winner is selected."),
         "results":all_rows,
     }
-    summary_text = json.dumps(summary, ensure_ascii=False, indent=2)+"\n"
+    summary_text = json.dumps(summary, ensure_ascii=False, indent=2, allow_nan=False)+"\n"
     summary_text.encode("utf-8")  # Validate before replacing any exports.
     table = []
     for row in all_rows:
