@@ -100,7 +100,22 @@ def compare_normal_curves(annotation_t_ms, annotation_f_khz,
     signed = np.full(len(x), np.nan)
     hit_t = np.full(len(x), np.nan)
     hit_f = np.full(len(x), np.nan)
-    previous_progress = -np.inf
+
+    # Each state stores: predecessor state, reference sample, intersection,
+    # number of matched normals, accumulated absolute distance, last
+    # prediction-polyline progress. State 0 represents an empty path.
+    #
+    # Keeping a state per possible last intersection allows earlier matches
+    # to be reconsidered when a locally closest one would block a later
+    # normal. We maximize coverage first, then minimize the total error.
+    # Skipping a reference normal retains all existing states unchanged.
+    states = [(None, None, None, 0, 0.0, -np.inf)]
+    frontier = [0]
+
+    def rank(state_index):
+        state = states[state_index]
+        return state[3], -state[4], -state[5]
+
     for i, (ts, fs, nu, nf) in enumerate(zip(x, ref["reference_freqs_khz"],
                                            ref["normal_u"], ref["normal_f"])):
         mu = (ts - t[0]) * scale
@@ -109,29 +124,55 @@ def compare_normal_curves(annotation_t_ms, annotation_f_khz,
         delta = du * nf - df * nu
         with np.errstate(divide="ignore", invalid="ignore"):
             alpha = -a / delta
-        # A segment entirely on the normal: select its closest point.
         coincident = (np.abs(delta) < 1e-10) & (np.abs(a) < 1e-10)
         denom = du * du + df * df
         closest = np.clip(((mu - p0u) * du + (fs - p0f) * df)
                           / np.maximum(denom, 1e-20), 0, 1)
-        alpha = np.where(coincident, closest, alpha)
-        possible = (np.isfinite(alpha) & (alpha >= -1e-9)
-                    & (alpha <= 1 + 1e-9))
-        alpha = np.clip(alpha, 0, 1)
-        progress = np.arange(len(du)) + alpha
-        possible &= progress >= previous_progress - 1e-9
-        dist = ((p0u + alpha * du - mu) * nu
-                + (p0f + alpha * df - fs) * nf)
-        if max_radius_khz_eq is not None:
-            possible &= np.abs(dist) <= max_radius_khz_eq
-        if not np.any(possible):
-            continue
-        choices = np.flatnonzero(possible)
-        chosen = choices[np.argmin(np.abs(dist[choices]))]
-        signed[i] = float(dist[chosen])
-        hit_t[i] = float(pt[chosen] + alpha[chosen] * (pt[chosen+1]-pt[chosen]))
-        hit_f[i] = float(p0f[chosen] + alpha[chosen] * df[chosen])
-        previous_progress = float(progress[chosen])
+
+        intersections = []
+        for segment in range(len(du)):
+            # If the entire segment lies on the normal, keep its endpoints
+            # as well as the closest point: a later normal may require an
+            # earlier or later point on this same coincident segment.
+            fractions = ((0.0, float(closest[segment]), 1.0)
+                         if coincident[segment]
+                         else (float(alpha[segment]),))
+            for fraction in fractions:
+                if not np.isfinite(fraction) or not -1e-9 <= fraction <= 1 + 1e-9:
+                    continue
+                fraction = float(np.clip(fraction, 0, 1))
+                distance = ((p0u[segment] + fraction * du[segment] - mu) * nu
+                            + (p0f[segment] + fraction * df[segment] - fs) * nf)
+                if (max_radius_khz_eq is not None
+                        and abs(distance) > max_radius_khz_eq):
+                    continue
+                progress = float(segment + fraction)
+                time = float(pt[segment] + fraction * (pt[segment+1]-pt[segment]))
+                frequency = float(p0f[segment] + fraction * df[segment])
+                intersections.append((progress, float(distance), time, frequency))
+
+        new_states = []
+        for intersection in intersections:
+            progress, distance, _, _ = intersection
+            eligible = (node for node in frontier
+                        if states[node][5] <= progress + 1e-9)
+            predecessor = max(eligible, key=rank, default=None)
+            if predecessor is None:
+                continue
+            previous = states[predecessor]
+            states.append((predecessor, i, intersection, previous[3] + 1,
+                           previous[4] + abs(distance), progress))
+            new_states.append(len(states) - 1)
+        frontier.extend(new_states)
+
+    best = max(frontier, key=rank)
+    while best != 0:
+        predecessor, index, intersection, _, _, _ = states[best]
+        _, distance, time, frequency = intersection
+        signed[index] = distance
+        hit_t[index] = time
+        hit_f[index] = frequency
+        best = predecessor
     covered = np.isfinite(signed)
     return {
         **ref,
