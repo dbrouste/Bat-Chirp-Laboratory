@@ -181,6 +181,9 @@ def save_reports(output, records, runs, definition):
         if unexpected:
             raise ValueError("dict contains fields not in fieldnames: "
                              + ", ".join(map(repr, unexpected)))
+        for column in columns:
+            if column not in row:
+                raise KeyError(column)
     all_rows = [r for r in records if r["region"]=="all"]
     # By construction, each chirp contributes multiple synthetic variants.
     # A baseline count here is the number of *variants* whose shared original
