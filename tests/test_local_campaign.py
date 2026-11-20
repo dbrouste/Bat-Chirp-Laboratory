@@ -71,7 +71,9 @@ def test_threshold_sweep_reuses_scores_without_reanalysis(tmp_path):
     result=db.execute("""SELECT threshold,new_alerts FROM threshold_results
           WHERE run_id='sample' AND scenario='local' AND region='all'
           ORDER BY threshold""").fetchall()
-    assert result==[(1.,1),(1.5,0),(2.5,0)]
+    # At threshold 2.5 the local/start case rises from 1.7 to 3.0,
+    # so it is still a newly flagged case.
+    assert result==[(1.,1),(1.5,0),(2.5,1)]
     db.close()
 
 
