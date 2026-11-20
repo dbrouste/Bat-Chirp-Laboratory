@@ -191,7 +191,7 @@ def save_reports(output, records, runs, definition):
     summary = {
         "version":"local_campaign_v1",
         "definition":definition,
-        "runs":runs,
+        "runs":list(runs),
         "note":("Threshold sweeps are calculated from precomputed window scores. "
                 "Baseline flags are counts of variants, not unique chirps. "
                 "Reference annotations are not necessarily correct. "
