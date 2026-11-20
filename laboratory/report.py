@@ -94,5 +94,6 @@ def write_html(report: dict, path: Path) -> None:
             "La précision globale demeure inconnue.</p>"
             f"{warning}<table>{rows}</table>{plot}<h2>WAV en erreur</h2><ul>{bad}</ul>"
             "</body></html>")
+    html = html.replace("\r\n", "\n")  # Avoid doubling CR on Windows text writes.
     html.encode("utf-8")  # Validate before opening and truncating the report.
     path.write_text(html, encoding="utf-8")
