@@ -237,10 +237,18 @@ région (début, milieu, fin). L'historique se trouve dans
                                suffix=".tmp", delete=False)
     temporary = Path(stream.name)
     try:
-        with stream:
+        try:
             writer=csv.DictWriter(stream,fieldnames=columns)
             writer.writeheader()
             writer.writerows(records)
+        except BaseException:
+            try:
+                stream.close()
+            except BaseException:
+                pass  # Preserve the CSV write failure if close also fails.
+            raise
+        else:
+            stream.close()
         temporary.replace(output/"campaign_scores.csv")
     except BaseException:
         try:
