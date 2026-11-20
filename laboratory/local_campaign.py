@@ -87,21 +87,28 @@ def run_key(dataset, *, max_chirps, skip_chirps, fft_size, stft_hop,
 
 def connect_db(path):
     db = sqlite3.connect(str(path))
-    db.execute("""CREATE TABLE IF NOT EXISTS experiments (
-        run_id TEXT PRIMARY KEY, window_points INTEGER NOT NULL,
-        state TEXT NOT NULL, created_at TEXT NOT NULL,
-        finished_at TEXT, elapsed_seconds REAL,
-        output_dir TEXT NOT NULL, error TEXT
-    )""")
-    db.execute("""CREATE TABLE IF NOT EXISTS threshold_results (
-        run_id TEXT NOT NULL, threshold REAL NOT NULL,
-        scenario TEXT NOT NULL, region TEXT NOT NULL,
-        total INTEGER NOT NULL, valid INTEGER NOT NULL,
-        baseline_flagged INTEGER NOT NULL, new_alerts INTEGER NOT NULL,
-        legacy_new_alerts INTEGER NOT NULL,
-        PRIMARY KEY (run_id, threshold, scenario, region)
-    )""")
-    db.commit()
+    try:
+        db.execute("""CREATE TABLE IF NOT EXISTS experiments (
+            run_id TEXT PRIMARY KEY, window_points INTEGER NOT NULL,
+            state TEXT NOT NULL, created_at TEXT NOT NULL,
+            finished_at TEXT, elapsed_seconds REAL,
+            output_dir TEXT NOT NULL, error TEXT
+        )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS threshold_results (
+            run_id TEXT NOT NULL, threshold REAL NOT NULL,
+            scenario TEXT NOT NULL, region TEXT NOT NULL,
+            total INTEGER NOT NULL, valid INTEGER NOT NULL,
+            baseline_flagged INTEGER NOT NULL, new_alerts INTEGER NOT NULL,
+            legacy_new_alerts INTEGER NOT NULL,
+            PRIMARY KEY (run_id, threshold, scenario, region)
+        )""")
+        db.commit()
+    except BaseException:
+        try:
+            db.close()
+        except BaseException:
+            pass  # Preserve the initialization failure if cleanup also fails.
+        raise
     return db
 
 
