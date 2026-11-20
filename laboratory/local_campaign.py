@@ -196,8 +196,6 @@ def save_reports(output, records, runs, definition):
                 "no automatic winner is selected."),
         "results":all_rows,
     }
-    (output/"campaign_summary.json").write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2)+"\n",encoding="utf-8")
     stream = NamedTemporaryFile(mode="w", encoding="utf-8-sig", newline="",
                                dir=output, prefix=".campaign_scores.",
                                suffix=".tmp", delete=False)
@@ -216,6 +214,9 @@ def save_reports(output, records, runs, definition):
         raise
     else:
         temporary.unlink(missing_ok=True)
+
+    (output/"campaign_summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2)+"\n",encoding="utf-8")
 
     table = []
     for row in all_rows:
