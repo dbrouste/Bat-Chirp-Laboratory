@@ -97,3 +97,33 @@ Fichier sur le PC du runner :
 Les colonnes contiennent le fichier WAV/JSON original, le chirp de référence lorsqu'il existe, les coordonnées temporelles/fréquentielles du pic, la morphologie du blob et des champs initialement vides pour la décision humaine. Les originaux et leurs annotations ne sont pas modifiés.
 
 **Ce CSV est une file de diagnostic, pas un projet `.analyser.csv` importable** dans le panneau de revue scientifique de Bat Acoustic Analyser. Cet import exige un export complet avec manifeste, empreintes et copies de travail vérifiées. Ne pas importer ce CSV comme projet de revue natif tant que ce format n'a pas été généré et testé séparément.
+
+
+## 6. Projet natif de revue importable dans Bat Acoustic Analyser
+
+La [validation sur le runner Windows #44681083032](https://github.com/dbrouste/Bat-Lab-Control/actions/runs/44681083032)
+a produit et vérifié un projet conforme au format `scientific_error_review_v1` :
+
+`Python-data/lab-geometry-comparisons/run-44668877700/hybrid-review-native-v1/morphology.analyser.csv`
+
+Il contient **35 cas sur 22 WAV**, répartis en 6 associations positives à fort
+SNR, 16 associations positives à SNR moyen et 13 candidats de WAV
+`no_chirp`. Tous les fichiers de travail sont des copies de la partition
+`calibration`, dont les empreintes ont été vérifiées. Les décisions de
+`human_decisions.csv` sont initialement vides. Les 13 négatifs disposent
+de marqueurs horizontaux **explicitement non scientifiques**, destinés
+uniquement au zoom et à la navigation.
+
+L'importeur réel de Bat Acoustic Analyser (`develop`) a confirmé les 35 cas,
+les identités chirp, les chemins confinés à l'espace de revue et les fichiers
+WAV/JSON. Trois tests de l'importeur ont réussi sans Qt. L'ouverture graphique
+sur le corpus réel reste à confirmer dans l'application installée.
+
+La file est compatible uniquement avec la version de l'analyseur incluant
+l'extension `morphology` de la liste des files autorisées. Pour les détails de
+lancement et les précautions, voir le fichier `docs/REVUE_SCIENTIFIQUE.md`
+dans Bat-Acoustic-Analyser.
+
+Le modèle scientifique du détecteur et les paramètres de référence demeurent
+inchangés ; l'import d'un projet de revue ne constitue pas une validation
+acoustique automatique et ne transfère jamais les annotations vers les originaux.
