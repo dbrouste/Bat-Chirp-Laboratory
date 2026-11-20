@@ -223,6 +223,14 @@ interactifs des cas prioritaires. Le jeu test n'est jamais traité et les
 annotations ne sont pas modifiées. Voir
 [la documentation de l'audit V2](docs/AUDIT_ACOUSTIQUE_V2.md).
 
+L'audit V2 exporte également **`reference_review_ranked.csv`** contenant
+toutes les références manuelles de calibration, avec un **score de suspicion
+heuristique 0–100**, ses motifs, sa fiabilité et ses quatre composantes.
+Le score est expérimental et **non calibré**. Il est consultable et filtrable
+dans la fenêtre « Contrôle qualité des annotations manuelles » de
+Bat Acoustic Analyser, sans écriture des scores dans les JSON originaux.
+[Guide de classement et de revue](docs/CLASSIFICATION_REFERENCES.md).
+
 ### Validation de l'audit V2
 
 Pour contrôler le suivi même lorsqu'aucune annotation n'est signalée,

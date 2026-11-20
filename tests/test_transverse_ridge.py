@@ -183,6 +183,15 @@ def test_run_v2_excludes_test_and_emits_queue(tmp_path,monkeypatch):
         rows=list(csv.DictReader(file))
     assert len(rows)==1 and rows[0]["partition"]=="calibration"
     assert rows[0]["source_wav"]==manifest[0]["source_wav"]
+    assert rows[0]["suspicion_score_version"] == summary["suspicion_score_version"]
+    assert 0 <= int(rows[0]["suspicion_score"]) <= 100
+    ranked_path = tmp_path / "results" / "reference_review_ranked.csv"
+    with ranked_path.open(encoding="utf-8-sig") as stream:
+        ranked = list(csv.DictReader(stream))
+    assert len(ranked) == 1
+    assert ranked[0]["chirp_id"] == str(chirp()["chirp_id"])
+    assert ranked[0]["source_json"] == manifest[0]["source_json"]
+    assert summary["dataset"] == str(root.resolve())
 
 
 def test_fine_grid_can_be_overridden_for_higher_overlap(tmp_path):
