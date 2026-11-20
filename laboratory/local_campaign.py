@@ -197,28 +197,6 @@ def save_reports(output, records, runs, definition):
         "results":all_rows,
     }
     summary_text = json.dumps(summary, ensure_ascii=False, indent=2)+"\n"
-    stream = NamedTemporaryFile(mode="w", encoding="utf-8-sig", newline="",
-                               dir=output, prefix=".campaign_scores.",
-                               suffix=".tmp", delete=False)
-    temporary = Path(stream.name)
-    try:
-        with stream:
-            writer=csv.DictWriter(stream,fieldnames=columns)
-            writer.writeheader()
-            writer.writerows(records)
-        temporary.replace(output/"campaign_scores.csv")
-    except BaseException:
-        try:
-            temporary.unlink(missing_ok=True)
-        except BaseException:
-            pass  # Preserve the export failure if cleanup also fails.
-        raise
-    else:
-        temporary.unlink(missing_ok=True)
-
-    (output/"campaign_summary.json").write_text(
-        summary_text,encoding="utf-8")
-
     table = []
     for row in all_rows:
         valid=row["valid"]
@@ -250,6 +228,27 @@ Le benchmark n'est pas modifié et aucune variante n'est promue automatiquement.
 <p>Le CSV <code>campaign_scores.csv</code> contient aussi la ventilation par
 région (début, milieu, fin). L'historique se trouve dans
 <code>campaign.sqlite</code>.</p></body></html>"""
+    stream = NamedTemporaryFile(mode="w", encoding="utf-8-sig", newline="",
+                               dir=output, prefix=".campaign_scores.",
+                               suffix=".tmp", delete=False)
+    temporary = Path(stream.name)
+    try:
+        with stream:
+            writer=csv.DictWriter(stream,fieldnames=columns)
+            writer.writeheader()
+            writer.writerows(records)
+        temporary.replace(output/"campaign_scores.csv")
+    except BaseException:
+        try:
+            temporary.unlink(missing_ok=True)
+        except BaseException:
+            pass  # Preserve the export failure if cleanup also fails.
+        raise
+    else:
+        temporary.unlink(missing_ok=True)
+
+    (output/"campaign_summary.json").write_text(
+        summary_text,encoding="utf-8")
     (output/"campaign_report.html").write_text(document,encoding="utf-8")
 
 
