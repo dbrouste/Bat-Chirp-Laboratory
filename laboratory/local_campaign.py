@@ -174,6 +174,13 @@ def save_reports(output, records, runs, definition):
     from tempfile import NamedTemporaryFile
 
     records = list(records)
+    columns=("window","threshold","scenario","region","total","valid",
+             "baseline_flagged","new_alerts","legacy_new_alerts")
+    for row in records:
+        unexpected = row.keys() - columns
+        if unexpected:
+            raise ValueError("dict contains fields not in fieldnames: "
+                             + ", ".join(map(repr, unexpected)))
     all_rows = [r for r in records if r["region"]=="all"]
     # By construction, each chirp contributes multiple synthetic variants.
     # A baseline count here is the number of *variants* whose shared original
@@ -197,8 +204,6 @@ def save_reports(output, records, runs, definition):
     temporary = Path(stream.name)
     try:
         with stream:
-            columns=("window","threshold","scenario","region","total","valid",
-                     "baseline_flagged","new_alerts","legacy_new_alerts")
             writer=csv.DictWriter(stream,fieldnames=columns)
             writer.writeheader()
             writer.writerows(records)
