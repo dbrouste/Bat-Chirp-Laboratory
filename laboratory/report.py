@@ -73,14 +73,19 @@ def write_html(report: dict, path: Path) -> None:
         if incomplete else ""
     )
     plot = fig.to_html(full_html=False, include_plotlyjs=True)
+    protocol_text = (
+        "Le score géométrique utilise les distances perpendiculaires en kHz_eq "
+        "et une couverture explicite ; "
+        if geometry else
+        "Le score historique utilise les écarts verticaux de fréquence en kHz ; "
+    )
     html = ("<!doctype html><html lang='fr'><head><meta charset='utf-8'>"
             "<title>Chirp laboratory</title><style>body{font:16px system-ui;"
             "margin:2rem auto;max-width:1100px;color:#203040}table{border-collapse:collapse}"
             "th,td{padding:.5rem 1rem;border-bottom:1px solid #ddd;text-align:left}"
             "</style></head><body><h1>Laboratoire de chirps</h1>"
             f"<p>Protocole : {escape(str(report.get('metadata', {}).get('scoring_protocol')))}. "
-            "Le score géométrique utilise les distances perpendiculaires en kHz_eq "
-            "et une couverture explicite ; les seuils SNR restent exploratoires. "
+            f"{protocol_text}les seuils SNR restent exploratoires. "
             "Les chirps non suivis ont une ordonnée zéro uniquement pour l'affichage.</p>"
             "<p>Les WAV positifs ne sont pas annotés exhaustivement. Seuls "
             "les WAV explicitement revus No chirp fournissent des exemples "
