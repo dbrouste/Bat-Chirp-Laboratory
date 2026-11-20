@@ -9,6 +9,7 @@ import numpy as np
 
 PROTOCOL = "square_normals_v1"
 TIME_SCALE_POLICY = "cubic_near_horizontal_transition_v2"
+MATCHING_POLICY = "ordered_max_coverage_min_abs_error_v2"
 
 
 def square_time_scale(annotation_t_ms, annotation_f_khz, *,
