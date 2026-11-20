@@ -9,7 +9,7 @@ from pathlib import Path
 def write_html(report: dict, path: Path) -> None:
     import plotly.graph_objects as go
 
-    details = report.get("details", [])
+    details = list(report.get("details", []))
     fig = go.Figure()
     for matched, label, colour in ((True, "Suivi", "#0b8177"),
                                     (False, "Non suivi", "#d65a51")):
