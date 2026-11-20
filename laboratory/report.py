@@ -60,6 +60,16 @@ def write_html(report: dict, path: Path) -> None:
     bad = "".join(f"<li>{escape(str(x['file']))}: "
                   f"{escape(str(x['error']))}</li>"
                   for x in report["per_file"] if "error" in x)
+    incomplete = report.get("metadata", {}).get("status") == "incomplete"
+    warning = (
+        "<section role='alert'><h2>Résultats incomplets</h2>"
+        "<p>Un ou plusieurs WAV n'ont pas été évalués. "
+        "Les scores pondérés globaux sont indisponibles. "
+        "Les scores non pondérés partiels ne sont qu'une borne basse sur "
+        "les références manuelles connues et ne constituent pas un score global "
+        "validé. Les indicateurs SNR restent limités aux WAV évalués.</p></section>"
+        if incomplete else ""
+    )
     plot = fig.to_html(full_html=False, include_plotlyjs=True)
     html = ("<!doctype html><html lang='fr'><head><meta charset='utf-8'>"
             "<title>Chirp laboratory</title><style>body{font:16px system-ui;"
@@ -75,6 +85,6 @@ def write_html(report: dict, path: Path) -> None:
             "négatifs. Les alertes sur ces WAV comptent des candidats du "
             "détecteur, pas des trajectoires entièrement reconstruites. "
             "La précision globale demeure inconnue.</p>"
-            f"<table>{rows}</table>{plot}<h2>WAV en erreur</h2><ul>{bad}</ul>"
+            f"{warning}<table>{rows}</table>{plot}<h2>WAV en erreur</h2><ul>{bad}</ul>"
             "</body></html>")
     path.write_text(html, encoding="utf-8")
