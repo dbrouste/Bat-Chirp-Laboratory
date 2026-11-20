@@ -344,6 +344,41 @@ def run(*, annotations: Path | None = None, wav_dir: Path | None = None,
     totals = summarize_results(per_file, details,
                                low_snr_importance_weight=params[
                                    "low_snr_importance_weight"])
+    failed_files = {row["file"] for row in per_file if "error" in row}
+    if failed_files:
+        # The reference annotations exist even when a worker has no results.
+        # These chirps must not silently disappear from the denominator.
+        # Records have already been filtered for explicitly excluded QA chirps.
+        missing_references = sum(
+            sum(isinstance(chirp, dict)
+                and chirp.get("source") == "manual"
+                and chirp.get("status") == "validated"
+                for chirp in records[name].get("chirps", []))
+            for name in failed_files
+        )
+        evaluated_references = totals["annotated"]
+        known_references = evaluated_references + missing_references
+        totals["annotated"] = known_references
+        totals["manual_references_evaluated"] = evaluated_references
+        totals["manual_references_failed"] = missing_references
+
+        # An unknown worker SNR means its importance weights are also unknown:
+        # success-only weighted metrics cannot represent the full experiment.
+        totals["weighted_detector_recall"] = None
+        totals["weighted_full_pipeline_within_tolerance_fraction"] = None
+        totals["weighted_missed_chirp_mass"] = None
+        totals["total_chirp_importance"] = None
+
+        # A conservative lower bound for known manual references; never
+        # treat failed computations as measured detection failures.
+        totals["full_pipeline_within_tolerance_fraction"] = (
+            sum(float(row.get("within_snr_tolerance_fraction") or 0.0)
+                for row in details) / known_references
+            if evaluated_references and known_references else None
+        )
+        totals["score_scope"] = "incomplete: partial unweighted lower bound"
+    else:
+        totals["score_scope"] = "complete"
     for row in per_file:
         if row["file"] in negative_names:
             row["reference_class"] = "reviewed_no_chirp"
