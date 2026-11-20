@@ -80,3 +80,20 @@ En revanche, même cette variante augmente le nombre de candidats sur les WAV `n
 - Les seuils issus de cette exploration ne constituent pas une validation indépendante. Garder strictement la partition `test` pour la phase finale après gel de l'algorithme.
 
 **Attention aux biais :** la règle de fréquence ≥ 100 kHz risque de sélectionner une partie seulement des types de chirps présents ; le `peak_db` mesuré dans les blobs est un niveau spectrogramme, pas une mesure SNR directement comparable d'un WAV à l'autre. Il faut éviter d'apprendre le détecteur à partir de l'emplacement temporel d'annotations manuelles, qui n'est pas disponible en utilisation réelle.
+
+
+## 5. File courte pour la revue humaine
+
+Le [run #44679107858](https://github.com/dbrouste/Bat-Lab-Control/actions/runs/44679107858) a exporté, depuis les résultats du criblage sans nouvelle analyse des WAV, une file de **35 cas distincts**, avec contrôles de provenance et de dédoublonnage :
+
+- **6 associations récupérées à SNR ≥ 35 dB** (priorité 1) ;
+- **16 associations récupérées à SNR moyen** (priorité 2) ;
+- **13 candidats supplémentaires sur 11 WAV `no_chirp`** (priorité 3).
+
+Fichier sur le PC du runner :
+
+`Python-data/lab-geometry-comparisons/run-44668877700/hybrid-review-queue-v1/hybrid_cases_for_review.csv`
+
+Les colonnes contiennent le fichier WAV/JSON original, le chirp de référence lorsqu'il existe, les coordonnées temporelles/fréquentielles du pic, la morphologie du blob et des champs initialement vides pour la décision humaine. Les originaux et leurs annotations ne sont pas modifiés.
+
+**Ce CSV est une file de diagnostic, pas un projet `.analyser.csv` importable** dans le panneau de revue scientifique de Bat Acoustic Analyser. Cet import exige un export complet avec manifeste, empreintes et copies de travail vérifiées. Ne pas importer ce CSV comme projet de revue natif tant que ce format n'a pas été généré et testé séparément.
