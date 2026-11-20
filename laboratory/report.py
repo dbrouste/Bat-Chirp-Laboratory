@@ -22,7 +22,8 @@ def write_html(report: dict, path: Path) -> None:
                for row in subset],
             mode="markers", name=label,
             marker={"color": colour, "size": 8},
-            text=[f'{row["file"]} : {row["chirp_id"]}' for row in subset],
+            text=[f'{escape(str(row["file"]))} : {escape(str(row["chirp_id"]))}'
+                  for row in subset],
             hovertemplate="%{text}<br>SNR : %{x:.1f} dB"
                           "<br>Erreur normalisée : %{y:.2f}<extra></extra>",
         ))
