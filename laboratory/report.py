@@ -56,7 +56,8 @@ def write_html(report: dict, path: Path) -> None:
             ("Candidats par WAV No chirp", neg["candidate_alerts_per_wav"]),
             ("Alertes candidates par heure No chirp", neg["candidate_alerts_per_hour"]),
         ])
-    rows = "".join(f"<tr><th>{escape(str(key))}</th><td>{escape(str(value))}</td></tr>"
+    rows = "".join(f"<tr><th>{escape(str(key))}</th><td>"
+                   f"{escape(str(value)) if value is not None else 'indisponible'}</td></tr>"
                    for key, value in summary)
     bad = "".join(f"<li>{escape(str(x['file']))}: "
                   f"{escape(str(x['error']))}</li>"
