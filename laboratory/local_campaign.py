@@ -88,6 +88,8 @@ def run_key(dataset, *, max_chirps, skip_chirps, fft_size, stft_hop,
 def connect_db(path):
     db = sqlite3.connect(str(path))
     try:
+        # SQLite DDL needs an explicit transaction to roll back on failure.
+        db.execute("BEGIN")
         db.execute("""CREATE TABLE IF NOT EXISTS experiments (
             run_id TEXT PRIMARY KEY, window_points INTEGER NOT NULL,
             state TEXT NOT NULL, created_at TEXT NOT NULL,
