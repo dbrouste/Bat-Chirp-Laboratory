@@ -261,6 +261,7 @@ région (début, milieu, fin). L'historique se trouve dans
 
     (output/"campaign_summary.json").write_text(
         summary_text,encoding="utf-8")
+    document = document.replace("\r\n", "\n")  # Avoid doubling CR on Windows text writes.
     (output/"campaign_report.html").write_text(document,encoding="utf-8")
 
 
