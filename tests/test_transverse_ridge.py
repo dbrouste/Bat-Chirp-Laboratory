@@ -110,8 +110,12 @@ def test_square_calibration_uses_full_curve_not_median_segment_slope():
 def test_near_horizontal_fallback_and_no_steep_slope_cap():
     assert square_time_scale([20, 24], [80, 80]) == (
         10.0, "near_horizontal_fallback")
-    assert square_time_scale([20, 24], [80, 81]) == (
-        10.0, "near_horizontal_fallback")
+    # A small nonzero slope now blends smoothly into the square regime.
+    # At ratio 0.25 the cubic weight is 0.15625, yielding 8.4765625.
+    scale, mode = square_time_scale([20, 24], [80, 81])
+    assert scale == pytest.approx(8.4765625)
+    assert mode == "near_horizontal_transition"
+
     assert square_time_scale([20, 20.5], [150, 50]) == (
         200.0, "square")
     with pytest.raises(ValueError, match="invalid manual chirp"):
