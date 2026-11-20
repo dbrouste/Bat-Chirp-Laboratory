@@ -197,6 +197,7 @@ def save_reports(output, records, runs, definition):
         "results":all_rows,
     }
     summary_text = json.dumps(summary, ensure_ascii=False, indent=2)+"\n"
+    summary_text.encode("utf-8")  # Validate before replacing any exports.
     table = []
     for row in all_rows:
         valid=row["valid"]
