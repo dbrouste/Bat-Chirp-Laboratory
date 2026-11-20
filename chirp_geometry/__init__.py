@@ -8,6 +8,7 @@ from __future__ import annotations
 import numpy as np
 
 PROTOCOL = "square_normals_v1"
+TIME_SCALE_POLICY = "cubic_near_horizontal_transition_v2"
 
 
 def square_time_scale(annotation_t_ms, annotation_f_khz, *,
