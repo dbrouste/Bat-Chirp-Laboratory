@@ -59,7 +59,7 @@ def write_html(report: dict, path: Path) -> None:
     rows = "".join(f"<tr><th>{escape(str(key))}</th><td>"
                    f"{escape(str(value)) if value is not None else 'indisponible'}</td></tr>"
                    for key, value in summary)
-    bad = "".join(f"<li>{escape(str(x['file']))}: "
+    bad = "".join(f"<li style='white-space:pre-wrap'>{escape(str(x['file']))}: "
                   f"{escape(str(x['error']))}</li>"
                   for x in report["per_file"] if "error" in x)
     incomplete = report.get("metadata", {}).get("status") == "incomplete"
