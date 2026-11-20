@@ -203,7 +203,13 @@ def save_reports(output, records, runs, definition):
             writer.writeheader()
             writer.writerows(records)
         temporary.replace(output/"campaign_scores.csv")
-    finally:
+    except BaseException:
+        try:
+            temporary.unlink(missing_ok=True)
+        except BaseException:
+            pass  # Preserve the export failure if cleanup also fails.
+        raise
+    else:
         temporary.unlink(missing_ok=True)
 
     table = []
