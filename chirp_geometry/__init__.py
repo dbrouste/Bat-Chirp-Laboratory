@@ -28,8 +28,19 @@ def square_time_scale(annotation_t_ms, annotation_f_khz, *,
     scale = float(np.ptp(f) / (t[-1] - t[0]))
     if not np.isfinite(scale):
         raise ValueError("invalid square calibration time scale")
-    if scale < near_horizontal_limit_khz_per_ms:
+    if scale == 0:
         return float(fallback_khz_per_ms), "near_horizontal_fallback"
+    if scale < near_horizontal_limit_khz_per_ms:
+        # Blend the near-horizontal fallback continuously into the square
+        # calibration. The cubic smoothstep has zero derivative at both ends,
+        # so the effective scale joins the raw scale continuously (including
+        # its first derivative) at the threshold. This also avoids a nearly
+        # tenfold jump when an annotation crosses 1 kHz/ms.
+        fraction = scale / near_horizontal_limit_khz_per_ms
+        blend = fraction * fraction * (3.0 - 2.0 * fraction)
+        continuous_scale = (fallback_khz_per_ms * (1.0 - blend)
+                            + scale * blend)
+        return float(continuous_scale), "near_horizontal_transition"
     return scale, "square"
 
 
