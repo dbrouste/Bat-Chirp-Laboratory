@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 from html import escape
+from math import isfinite
 from pathlib import Path
+
+
+def _format_summary_value(value: object) -> str:
+    if value is None or (isinstance(value, float) and not isfinite(value)):
+        return "indisponible"
+    return escape(str(value))
 
 
 def write_html(report: dict, path: Path) -> None:
@@ -57,7 +64,7 @@ def write_html(report: dict, path: Path) -> None:
             ("Alertes candidates par heure No chirp", neg["candidate_alerts_per_hour"]),
         ])
     rows = "".join(f"<tr><th>{escape(str(key))}</th><td>"
-                   f"{escape(str(value)) if value is not None else 'indisponible'}</td></tr>"
+                   f"{_format_summary_value(value)}</td></tr>"
                    for key, value in summary)
     bad = "".join(f"<li style='white-space:pre-wrap'>{escape(str(x['file']))}: "
                   f"{escape(str(x['error']))}</li>"
