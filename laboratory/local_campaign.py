@@ -169,6 +169,7 @@ def collect_rows(db, run_ids, thresholds):
 
 
 def save_reports(output, records, runs, definition):
+    records = list(records)
     all_rows = [r for r in records if r["region"]=="all"]
     # By construction, each chirp contributes multiple synthetic variants.
     # A baseline count here is the number of *variants* whose shared original
