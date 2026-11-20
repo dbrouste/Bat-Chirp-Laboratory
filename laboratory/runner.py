@@ -26,7 +26,7 @@ from .dataset import (collect_annotations, fingerprint_inputs, stable_hash,
                       sha256_file, write_manifest)
 from .aggregation import summarize_results
 from .frozen_dataset import collect_frozen_dataset
-from chirp_geometry import TIME_SCALE_POLICY
+from chirp_geometry import TIME_SCALE_POLICY, MATCHING_POLICY
 
 
 ROOT = Path(__file__).resolve().parents[1]
