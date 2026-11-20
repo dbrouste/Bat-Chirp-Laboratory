@@ -435,6 +435,9 @@ def run(*, annotations: Path | None = None, wav_dir: Path | None = None,
         "geometry_distance_unit": ("kHz_eq" if params["geometry_mode"] == "square_normals_v1"
                                    else "kHz_vertical"),
         "geometric_tolerances_calibrated": False,
+        "geometry_time_scale_policy": (
+            TIME_SCALE_POLICY if params["geometry_mode"] == "square_normals_v1"
+            else "vertical_legacy"),
         "annotations": str(annotation_description), "wav_dir": str(wav_dir),
         "frozen_dataset": dataset_provenance,
         "options": params, "workers": workers,
