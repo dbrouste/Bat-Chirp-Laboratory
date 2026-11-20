@@ -26,7 +26,7 @@ from .dataset import (collect_annotations, fingerprint_inputs, stable_hash,
                       sha256_file, write_manifest)
 from .aggregation import summarize_results
 from .frozen_dataset import collect_frozen_dataset
-from chirp_geometry import TIME_SCALE_POLICY
+from chirp_geometry import TIME_SCALE_POLICY, MATCHING_POLICY
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -437,6 +437,9 @@ def run(*, annotations: Path | None = None, wav_dir: Path | None = None,
         "geometric_tolerances_calibrated": False,
         "geometry_time_scale_policy": (
             TIME_SCALE_POLICY if params["geometry_mode"] == "square_normals_v1"
+            else "vertical_legacy"),
+        "geometry_matching_policy": (
+            MATCHING_POLICY if params["geometry_mode"] == "square_normals_v1"
             else "vertical_legacy"),
         "annotations": str(annotation_description), "wav_dir": str(wav_dir),
         "frozen_dataset": dataset_provenance,
