@@ -111,6 +111,13 @@ def connect_db(path):
         db.execute("""SELECT run_id, threshold, scenario, region, total, valid,
             baseline_flagged, new_alerts, legacy_new_alerts
             FROM threshold_results LIMIT 0""")
+        # REPLACE requires the full composite key to avoid duplicate results.
+        if db.execute("""SELECT COALESCE(group_concat(name, ','), '') =
+            'run_id,threshold,scenario,region'
+            FROM (SELECT name FROM pragma_table_info('threshold_results')
+                  WHERE pk > 0 ORDER BY pk)""").fetchone() == (0,):
+            raise sqlite3.OperationalError(
+                "threshold_results requires PRIMARY KEY (run_id, threshold, scenario, region)")
         db.commit()
     except BaseException:
         try:
