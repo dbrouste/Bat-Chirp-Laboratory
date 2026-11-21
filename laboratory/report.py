@@ -22,7 +22,7 @@ def write_html(report: dict, path: Path) -> None:
                                     (False, "Non suivi", "#d65a51")):
         subset = [row for row in details
                   if bool(row.get("tracking_success")) == matched and
-                  row.get("snr_max_db") is not None]
+                  row.get("snr_max_db") is not None and isfinite(row["snr_max_db"])]
         fig.add_trace(go.Scattergl(
             x=[row["snr_max_db"] for row in subset],
             y=[row.get("mean_normalized_error") if matched else 0
