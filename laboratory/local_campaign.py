@@ -104,6 +104,13 @@ def connect_db(path):
             legacy_new_alerts INTEGER NOT NULL,
             PRIMARY KEY (run_id, threshold, scenario, region)
         )""")
+        # IF NOT EXISTS does not validate columns in existing tables.
+        db.execute("""SELECT run_id, window_points, state, created_at,
+            finished_at, elapsed_seconds, output_dir, error
+            FROM experiments LIMIT 0""")
+        db.execute("""SELECT run_id, threshold, scenario, region, total, valid,
+            baseline_flagged, new_alerts, legacy_new_alerts
+            FROM threshold_results LIMIT 0""")
         db.commit()
     except BaseException:
         try:
