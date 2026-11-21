@@ -395,8 +395,7 @@ def compute(args):
             "P2/P2.1 full-cohort consistency check failed")
     for name in GATES:
         case_pos = sum(r[name] for r in details
-                       if r["review_case_id"] and
-                       r["cohort"] == "annotated_positive_matched_extra")
+                       if r["cohort"] == "annotated_positive_matched_extra")
         require(case_pos == by_gate[name]["matched_manual_refs_after_gate_conservative"] -
                 (423 - positive_extra_matched),
                 "full-cohort positive scores inconsistent with per-case flags")
