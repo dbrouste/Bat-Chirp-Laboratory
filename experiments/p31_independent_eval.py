@@ -340,12 +340,26 @@ def compute(args):
             Path(bench.__file__).resolve().is_relative_to(processing),
             "unpinned V4 detector / benchmark imported")
     if args.partition == "test":
-        require(args.freeze_proof is not None and args.request_nonce,
-                "independent test locked; freeze proof and one-shot nonce required")
+        require(args.freeze_proof is not None and args.p30c_report is not None and
+                args.request_nonce,
+                "independent test locked; freeze proof, P3.0c report and nonce required")
         proof = json.loads(args.freeze_proof.read_text(encoding="utf-8"))
         validate_freeze(proof, args.expected_evaluator_sha, args.request_nonce)
+        check_file = args.p30c_report.resolve()
+        require(check_file.is_file() and check_file.name == "matching_report.json" and
+                check_file.parent.name == "p30-matching-44974751398" and
+                sha256(check_file) == proof["p30c_report_sha256"],
+                "immutable P3.0c matching evidence mismatch")
+        check = json.loads(check_file.read_text(encoding="utf-8"))
+        require(check.get("status") == "matching_replay_verified_not_frozen" and
+                check.get("dataset_manifest_sha256") == MANIFEST_REFERENCE and
+                check.get("p31_independent_test_authorized") is False and
+                check.get("scientific_merge_authorized") is False and
+                check.get("heldout_wav_json_opened") is False,
+                "P3.0c scientific evidence is incompatible with freeze")
     else:
-        require(args.freeze_proof is None and args.request_nonce is None,
+        require(args.freeze_proof is None and args.p30c_report is None and
+                args.request_nonce is None,
                 "calibration replay must not carry any held-out authorization")
 
     rows = manifest_records(dataset, args.partition)
@@ -433,6 +447,7 @@ def main():
     parser.add_argument("--partition", choices=("calibration", "test"), required=True)
     parser.add_argument("--expected-evaluator-sha", required=True)
     parser.add_argument("--freeze-proof", type=Path)
+    parser.add_argument("--p30c-report", type=Path)
     parser.add_argument("--request-nonce")
     args = parser.parse_args()
     dataset = args.dataset.resolve()
