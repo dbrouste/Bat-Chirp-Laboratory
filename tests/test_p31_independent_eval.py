@@ -20,6 +20,9 @@ def positive(group, number, baseline=False, primary=True, secondary=True):
     return {
         "file": f"calibration/wav/{group}.wav", "chirp_id": str(number),
         "group": group, "v4": baseline, "primary": primary, "secondary": secondary,
+        "snr_db": 25.0,
+        "v4_geometric_error_khz_eq": 2.0,
+        "hybrid_geometric_error_khz_eq": 1.5,
     }
 
 
@@ -101,6 +104,19 @@ class P31SyntheticContract(unittest.TestCase):
         pos = [positive("one", "x", baseline=True, primary=False, secondary=True)]
         stats = paired_statistics(pos, [negative("one")], replicates=100)
         self.assertEqual(stats["primary_paired_recall_delta"], -1.0)
+        self.assertFalse(stats["promotion_candidate_eligible_for_human_review"])
+
+    def test_secondary_geometry_and_snr_are_descriptive_only(self):
+        pos = [positive(g, i, baseline=True, primary=True)
+               for g in ["one", "two", "three"] for i in range(3)]
+        neg = [negative(g) for g in ["one", "two", "three"]]
+        stats = paired_statistics(pos, neg, replicates=100)
+        self.assertEqual(stats["snr_strata"]["medium_15_35"]["manual_refs"], 9)
+        self.assertEqual(
+            stats["paired_geometric_diagnostics"][
+                "mean_primary_minus_v4_absolute_perpendicular_error_khz_eq"], -.5)
+        self.assertFalse(
+            stats["paired_geometric_diagnostics"]["signed_perpendicular_error_available"])
         self.assertFalse(stats["promotion_candidate_eligible_for_human_review"])
 
     def test_quantiles_deterministic(self):
