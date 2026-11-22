@@ -165,9 +165,12 @@ def evaluate_positive(dataset, name, record, baseline, hybrid, extras, y, sr,
             "snr_db": float(right["snr_max_db"]),
             "v4": is_old, "hybrid": is_new,
             "primary": bool(kept[PRIMARY]), "secondary": bool(kept[SECONDARY]),
-            "v4_error_khz_eq": left.get("mean_full_interval_error_khz"),
-            "hybrid_error_khz_eq": right.get("mean_full_interval_error_khz"),
-            "primary_geometry_available": bool(kept[PRIMARY]),
+            "v4_geometric_error_khz_eq": left.get("mean_geometric_error_khz_eq"),
+            "hybrid_geometric_error_khz_eq": right.get("mean_geometric_error_khz_eq"),
+            "v4_vertical_error_khz": left.get("mean_full_interval_error_khz"),
+            "hybrid_vertical_error_khz": right.get("mean_full_interval_error_khz"),
+            "primary_geometry_available": bool(kept[PRIMARY]) and
+                right.get("mean_geometric_error_khz_eq") is not None,
         })
     return rows
 
@@ -242,6 +245,44 @@ def paired_statistics(positives: list[dict], negatives: list[dict],
                   "p975": quantile(deltas, .975),
                   "replicates": len(deltas), "seed": seed,
                   "unit": "recording_session"}
+    # Secondary descriptive diagnostics, locked independently of the primary
+    # decision. Never select a new primary candidate after inspecting test.
+    snr_strata = {}
+    for name, include in (
+        ("low_le15", lambda x: x <= 15.0),
+        ("medium_15_35", lambda x: 15.0 < x < 35.0),
+        ("high_ge35", lambda x: x >= 35.0),
+    ):
+        cohort = [r for r in positives if include(float(r["snr_db"]))]
+        snr_strata[name] = {
+            "manual_refs": len(cohort),
+            "v4_tracks": sum(bool(r["v4"]) for r in cohort),
+            "primary_tracks": sum(bool(r["primary"]) for r in cohort),
+            "secondary_tracks": sum(bool(r["secondary"]) for r in cohort),
+        }
+    paired_geometric = [
+        r for r in positives
+        if r["v4"] and r["primary"] and
+        r.get("v4_geometric_error_khz_eq") is not None and
+        r.get("hybrid_geometric_error_khz_eq") is not None and
+        math.isfinite(float(r["v4_geometric_error_khz_eq"])) and
+        math.isfinite(float(r["hybrid_geometric_error_khz_eq"]))
+    ]
+    mean_geometric_delta = (
+        sum(float(r["hybrid_geometric_error_khz_eq"]) -
+            float(r["v4_geometric_error_khz_eq"]) for r in paired_geometric) /
+        len(paired_geometric) if paired_geometric else None
+    )
+    session_counts = {
+        group: {
+            "manual_refs": len(parts["positives"]),
+            "v4_tracks": sum(bool(r["v4"]) for r in parts["positives"]),
+            "primary_tracks": sum(bool(r["primary"]) for r in parts["positives"]),
+            "reviewed_negative_wavs": len(parts["negatives"]),
+            "v4_negative_tracks": sum(int(r["v4_tracks"]) for r in parts["negatives"]),
+            "primary_negative_tracks": sum(int(r["primary_tracks"]) for r in parts["negatives"]),
+        } for group, parts in sorted(groups.items())
+    }
     nonregression = bool(negatives) and hours > 0 and (
         primary_negative <= baseline_negative)
     superiority = ci is not None and ci["p025"] > 0.0
@@ -253,6 +294,15 @@ def paired_statistics(positives: list[dict], negatives: list[dict],
         "primary_tracked_manual_references": primary,
         "secondary_tracked_manual_references": secondary,
         "primary_paired_recall_delta": (primary - reference) / refs,
+        "snr_strata": snr_strata,
+        "per_session": session_counts,
+        "paired_geometric_diagnostics": {
+            "unit": "kHz_eq",
+            "pair_count": len(paired_geometric),
+            "mean_primary_minus_v4_absolute_perpendicular_error_khz_eq":
+                mean_geometric_delta,
+            "signed_perpendicular_error_available": False,
+        },
         "v4_negative_tracked_proposals": baseline_negative,
         "primary_negative_tracked_proposals": primary_negative,
         "secondary_negative_tracked_proposals": secondary_negative,
@@ -270,6 +320,7 @@ def paired_statistics(positives: list[dict], negatives: list[dict],
             *([] if len(groups) >= 3 else ["Fewer than 3 recording sessions: no valid session-bootstrap CI"]),
             "Positive WAV annotations are incomplete; unmatched candidates there are never negatives",
             "Tracked no_chirp proposals are not final application-level false-alarm rates",
+            "Signed perpendicular errors are not emitted by the pinned benchmark; only absolute perpendicular errors are compared",
         ],
     }
 
