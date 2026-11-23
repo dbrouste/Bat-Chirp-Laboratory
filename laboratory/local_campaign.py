@@ -144,6 +144,18 @@ def connect_db(path):
             )""").fetchone() == (1,):
             raise sqlite3.OperationalError(
                 "threshold_results must not have UNIQUE (run_id)")
+        # Run/scenario uniqueness would let REPLACE silently delete other thresholds.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('threshold_results') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 2
+                AND SUM(col.name = 'run_id' COLLATE NOCASE) = 1
+                AND SUM(col.name = 'scenario' COLLATE NOCASE) = 1
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "threshold_results must not have UNIQUE (run_id, scenario)")
         # Run/region uniqueness would let REPLACE silently delete other thresholds.
         if db.execute("""SELECT EXISTS (
             SELECT 1 FROM pragma_index_list('threshold_results') AS idx
