@@ -105,6 +105,8 @@ def test_runner_caches_results_without_changing_manual_json(tmp_path, monkeypatc
     assert one["totals"]["weighted_detector_recall"] == pytest.approx(1)
     assert one["metadata"]["scoring_protocol"] == "square_normals_v1"
     assert one["metadata"]["geometry_distance_unit"] == "kHz_eq"
+    assert one["metadata"]["geometry_time_scale_policy"] == "cubic_near_horizontal_transition_v2"
+    assert one["metadata"]["geometry_matching_policy"] == "ordered_max_coverage_min_abs_error_v2"
     assert two["metadata"]["files_from_cache"] == 1
     assert (output / "report.html").is_file()
     assert annotation_file.read_bytes() == untouched

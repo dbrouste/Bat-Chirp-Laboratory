@@ -127,3 +127,83 @@ def test_batch_refresh_preflight_rejects_changed_audio_without_writes(tmp_path):
     with pytest.raises(ValueError, match="WAV changed"):
         refresh_all_changed(dataset)
     assert (dataset / calibration["dataset_json"]).read_bytes() == original_dataset_json
+
+
+
+def test_sync_ignores_new_wavs_in_original_directory_json(tmp_path):
+    source = tmp_path / "src"
+    source.mkdir()
+    make_session(source, "night_a", "first.wav")
+    make_session(source, "night_b", "second.wav")
+    dataset = tmp_path / "dataset"
+    build_dataset(source, dataset, seed=3)
+    with (dataset / "manifest.csv").open(encoding="utf-8-sig", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    calibration = next(r for r in rows if r["partition"] == "calibration")
+    test = next(r for r in rows if r["partition"] == "test")
+    source_json = Path(calibration["source_json"])
+    dataset_json = dataset / calibration["dataset_json"]
+    untouched_test_json = (dataset / test["dataset_json"]).read_bytes()
+    original = json.loads(source_json.read_text())
+    member = Path(calibration["source_wav"]).name
+
+    # Merely adding an unrelated recording must not trigger a refresh.
+    original["files"]["new.wav"] = {
+        "chirps": [{"chirp_id": 95, "source": "manual",
+                    "status": "validated", "points": [
+                        {"t_ms": 1, "f_khz": 85}, {"t_ms": 3, "f_khz": 65}]}]
+    }
+    (source_json.parent / "new.wav").write_bytes(b"new")
+    source_json.write_text(json.dumps(original), encoding="utf-8")
+    untouched_snapshot = dataset_json.read_bytes()
+    only_new = refresh_all_changed(dataset, dry_run=True)
+    assert only_new["sessions_changed"] == 0
+    assert only_new["ignored_extra_wavs"] == [
+        {"json": str(source_json), "wav_names": ["new.wav"]}
+    ]
+    assert dataset_json.read_bytes() == untouched_snapshot
+
+    # Corrections to a frozen chirp do refresh, while the extra stays out.
+    original["files"][member]["chirps"][0]["points"][1]["f_khz"] = 58
+    source_json.write_text(json.dumps(original), encoding="utf-8")
+    dry = refresh_all_changed(dataset, dry_run=True)
+    assert dry["sessions_changed"] == 1
+    assert dataset_json.read_bytes() == untouched_snapshot
+    applied = refresh_all_changed(dataset)
+    assert applied["sessions_refreshed"] == 1
+    copied = json.loads(dataset_json.read_text(encoding="utf-8"))
+    assert list(copied["files"]) == [member]
+    assert copied["files"][member]["chirps"][0]["points"][1]["f_khz"] == 58
+    assert json.loads(source_json.read_text())["files"]["new.wav"]["chirps"]
+    assert (dataset / test["dataset_json"]).read_bytes() == untouched_test_json
+    with (dataset / "manifest.csv").open(encoding="utf-8-sig", newline="") as stream:
+        updated = list(csv.DictReader(stream))
+    import hashlib
+    refreshed = next(r for r in updated
+                     if r["dataset_json"] == calibration["dataset_json"])
+    assert refreshed["json_sha256"] == hashlib.sha256(dataset_json.read_bytes()).hexdigest()
+    assert refresh_all_changed(dataset)["sessions_changed"] == 0
+    assert list((dataset / "previous_metadata").glob("*.json"))
+
+
+def test_missing_member_in_original_json_aborts_batch_before_any_write(tmp_path):
+    source = tmp_path / "src"
+    source.mkdir()
+    make_session(source, "night_a", "first.wav")
+    make_session(source, "night_b", "second.wav")
+    dataset = tmp_path / "dataset"
+    build_dataset(source, dataset, seed=3)
+    with (dataset / "manifest.csv").open(encoding="utf-8-sig", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    calibration = next(r for r in rows if r["partition"] == "calibration")
+    source_json = Path(calibration["source_json"])
+    dataset_json = dataset / calibration["dataset_json"]
+    before = dataset_json.read_bytes()
+    original = json.loads(source_json.read_text())
+    original["files"].clear()
+    original["files"]["different.wav"] = {"chirps": []}
+    source_json.write_text(json.dumps(original), encoding="utf-8")
+    with pytest.raises(ValueError, match="missing frozen WAV entries"):
+        refresh_all_changed(dataset)
+    assert dataset_json.read_bytes() == before
+    assert not (dataset / "previous_metadata").exists()

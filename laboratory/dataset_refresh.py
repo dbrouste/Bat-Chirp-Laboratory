@@ -1,7 +1,9 @@
 """Refresh one existing annotation JSON in a frozen dataset, preserving splits.
 
-Only reference annotations may change. WAV bytes, session membership and the
-calibration/test assignment must remain unchanged. No source files are modified.
+Only reference annotations may change. WAV bytes, frozen corpus membership and
+calibration/test assignment must remain unchanged. An original directory-level
+JSON may contain *new* WAVs: these are ignored in the frozen dataset snapshot.
+No source files are modified.
 """
 from __future__ import annotations
 
@@ -88,12 +90,35 @@ def refresh_annotations(dataset: Path, wav_name: str | None = None, *,
     old_files, new_files = original["files"], source["files"]
     if not isinstance(old_files, dict) or not isinstance(new_files, dict):
         raise ValueError("invalid files mapping")
-    # Exact key membership prevents silently dropping or adding recordings.
-    if set(old_files) != set(new_files):
-        raise ValueError("JSON WAV membership changed; rebuild a new dataset version")
+    # The original directory-wide JSON may have acquired NEW recordings after
+    # the dataset was frozen. Never add those to this dataset or its split.
+    # However, every frozen WAV key must still exist verbatim in the source.
+    old_names, source_names = set(old_files), set(new_files)
+    missing_wavs = sorted(old_names - source_names)
+    extra_wavs = sorted(source_names - old_names)
+    if missing_wavs:
+        raise ValueError(
+            "JSON WAV membership changed; missing frozen WAV entries: "
+            + ", ".join(missing_wavs[:10])
+            + (" (and more)" if len(missing_wavs) > 10 else "")
+            + "; restore these entries or rebuild a new dataset version")
     dataset_wav_names = {Path(r["source_wav"]).name for r in related}
-    if dataset_wav_names != set(old_files) or len(related) != len(old_files):
+    if dataset_wav_names != old_names or len(related) != len(old_files):
         raise ValueError("manifest and JSON file list disagree")
+    # Filter only the original member keys, leaving the source JSON untouched.
+    # Serializing the projected snapshot is necessary when the original JSON
+    # contains extra WAVs; otherwise retain its exact bytes and formatting.
+    if extra_wavs:
+        projected = dict(source)
+        projected["files"] = {name: new_files[name] for name in old_files}
+        if projected == original:
+            # Source JSON membership alone is not an annotation change.
+            snapshot_bytes = dataset_json.read_bytes()
+        else:
+            snapshot_bytes = json.dumps(
+                projected, ensure_ascii=False, indent=2).encode("utf-8")
+    else:
+        snapshot_bytes = source_json.read_bytes()
     new_counts = {}
     for r in related:
         name = Path(r["source_wav"]).name
@@ -109,7 +134,7 @@ def refresh_annotations(dataset: Path, wav_name: str | None = None, *,
         if digest(source_wav) != r["wav_sha256"] or digest(dataset_wav) != r["wav_sha256"]:
             raise ValueError(f"WAV changed: {name}; rebuild a dataset instead")
     manual_before = sum(int(r["validated_manual"]) for r in related)
-    new_hash = digest(source_json)
+    new_hash = hashlib.sha256(snapshot_bytes).hexdigest()
     old_hash = digest(dataset_json)
     changed = new_hash != old_hash
     for r in related:
@@ -124,6 +149,7 @@ def refresh_annotations(dataset: Path, wav_name: str | None = None, *,
               "json": str(source_json), "affected_wavs": len(related),
               "manual_chirps_before": manual_before,
               "manual_chirps_in_updated_json": sum(c[0] for c in new_counts.values()),
+              "ignored_extra_wavs": extra_wavs,
               "changed": changed, "dry_run": dry_run}
     # Do not rewrite files if JSON identical.
     if dry_run or not changed:
@@ -145,8 +171,7 @@ def refresh_annotations(dataset: Path, wav_name: str | None = None, *,
     try:
         with tempfile.NamedTemporaryFile(dir=dataset_json.parent, delete=False) as tmp:
             staged_json = Path(tmp.name)
-            with source_json.open("rb") as stream:
-                shutil.copyfileobj(stream, tmp)
+            tmp.write(snapshot_bytes)
         with tempfile.NamedTemporaryFile("w", encoding="utf-8-sig", newline="",
                                          dir=root, delete=False) as tmp:
             staged_manifest = Path(tmp.name)
@@ -201,6 +226,10 @@ def refresh_all_changed(dataset: Path, *, source_root_override: Path | None = No
              "affected_wavs": check["affected_wavs"]}
             for check in changed],
         "test_partition_untouched": True,
+        "ignored_extra_wavs": [
+            {"json": check["json"], "wav_names": check["ignored_extra_wavs"]}
+            for check in checks if check["ignored_extra_wavs"]
+        ],
     }
     if not dry_run:
         for check in changed:

@@ -6,6 +6,47 @@ détection et le suivi des chirps ultrasonores. Le code d'analyse audio reste da
 les annotations humaines proviennent notamment de
 [`dbrouste/Bat-Acoustic-Analyser`](https://github.com/dbrouste/Bat-Acoustic-Analyser).
 
+## Agent local d'optimisation du détecteur
+
+Pour éviter les allers-retours manuels entre exécutions, la version
+`develop` contient un agent d'expérimentation **local**, borné et
+reproductible. Il enchaîne les benchmarks sur **calibration seulement**,
+compare les variantes et propose une configuration, sans modifier le
+détecteur ou le corpus :
+
+- Sous Windows : double-cliquer sur `tools\run_agent_windows.cmd`.
+- En ligne de commande : `python -m laboratory.autonomous_optimizer --dataset CHEMIN_DATASET --out CHEMIN_SORTIE --workers 4`.
+- Résultats : `agent_report.html`, `leaderboard.csv` et `priority_cases.csv`.
+
+Lire le [guide agent local](docs/AGENT_LOCAL.md) pour la reprise
+automatique des campagnes et les garde-fous scientifiques.
+
+**Négatifs vérifiés :** les WAV explicitement étiquetés
+`review_status=no_chirp` dans Bat-Acoustic-Analyser peuvent être
+évalués comme références négatives de calibration via
+`python -m laboratory --dataset CHEMIN_DATASET --out CHEMIN_SORTIE --include-reviewed-negatives`.
+L'agent les inclut dans ses **nouvelles** campagnes, séparément des
+chirps manuels positifs. Seuls les candidats émis dans ces WAV
+explicitement négatifs comptent pour les métriques de fausses alertes.
+Consulter [le protocole No chirp](docs/REVIEWED_NEGATIVES.md).
+
+**Idées scientifiques à explorer :** les hypothèses sur les
+harmoniques ciblées, les seuils asymétriques en fin de chirp, la
+prédiction rythmique et le rejet des échos sont conservées dans
+[`experiments/ideas.yaml`](experiments/ideas.yaml), avec un
+[programme expérimental détaillé](docs/RESEARCH_IDEAS.md).
+Les afficher via `python -m laboratory.research_ideas`.
+Tant que leurs benchmarks spécialisés ne sont pas prêts, le pilote
+Codex refuse de les traiter comme des objectifs mesurables.
+
+**Pilote Codex (code)** : un second agent peut maintenant proposer
+jusqu'à trois variantes de `bat_analysis/detection.py` dans des worktrees Git
+isolés, les tester puis les comparer à la meilleure configuration de
+calibration. Il ne pousse ni ne fusionne aucun changement :
+[guide Codex](docs/CODE_AGENT_PILOT.md), lanceur
+`tools/run_code_agent_windows.cmd`. Ce pilote nécessite Codex CLI sur
+Windows et une connexion au modèle ; les WAV restent évalués localement.
+
 ## Géométrie partagée
 
 Le module canonique `chirp_geometry` calcule les normales et les
@@ -33,9 +74,15 @@ perpendiculaire partagées avec le benchmark SNR, agrégation indépendante,
 exécution multiprocessus Windows, cache par WAV, historique SQLite et rapport
 HTML autonome.
 
+**Disponible en plus :** un agent local borné, autonome pour explorer des
+paramètres du détecteur, enregistrer les résultats et proposer une configuration
+sans toucher au corpus ou à la partition test.
+
 **Non implémentés :** score géométrique complet avec contrôle des prolongements
-et des fragmentations (spécification dans `docs/`), recherche Optuna, agent IA
-et interface de pilotage. Le laboratoire n'est pas encore un agent autonome.
+et des fragmentations (spécification dans `docs/`), recherche Optuna,
+agents de refactorisation sans restriction et interface graphique de pilotage.
+Le pilote IA de modification du code reste borné à un seul fichier,
+sur worktree isolé et avec revue humaine obligatoire.
 
 ## Installation sur Windows
 
@@ -60,7 +107,27 @@ Pour reproduire un ancien benchmark vertical, fournir
 Les rapports portent le champ `metadata.scoring_protocol` et les résultats
 anciens ne sont **pas directement comparables** aux nouveaux.
 
-### Premier essai (3 WAV)
+### Benchmark initial sur le corpus validé (calibration uniquement)
+
+Le mode `--dataset` lit directement `dataset-v1/manifest.csv`, vérifie
+les empreintes WAV/JSON et ne charge **aucun WAV du jeu test** :
+
+```powershell
+python -m laboratory `
+  --dataset "C:\Users\damien\Documents\Python\Python-data\dataset-v1" `
+  --out "C:\Users\damien\Documents\Python\Python-data\baseline-v1" `
+  --workers 4 `
+  --max-files 3
+```
+
+Retirer `--max-files` pour la campagne complète, de préférence dans
+un nouveau répertoire de résultats. Voir le
+[guide du benchmark initial](docs/BASELINE_INITIALE.md).
+Cette première baseline utilise le connecteur de
+`bat_full_spectrum_processing`, qui n'est pas nécessairement la version
+du détecteur actuellement intégrée à Bat-Acoustic-Analyser.
+
+### Premier essai (3 WAV) — mode historique
 
 ```powershell
 .\.venv\Scripts\python.exe -m laboratory `
@@ -222,6 +289,14 @@ Il exporte `acoustic_chirps_v2.csv`, `annotation_review_queue.csv`
 interactifs des cas prioritaires. Le jeu test n'est jamais traité et les
 annotations ne sont pas modifiées. Voir
 [la documentation de l'audit V2](docs/AUDIT_ACOUSTIQUE_V2.md).
+
+L'audit V2 exporte également **`reference_review_ranked.csv`** contenant
+toutes les références manuelles de calibration, avec un **score de suspicion
+heuristique 0–100**, ses motifs, sa fiabilité et ses quatre composantes.
+Le score est expérimental et **non calibré**. Il est consultable et filtrable
+dans la fenêtre « Contrôle qualité des annotations manuelles » de
+Bat Acoustic Analyser, sans écriture des scores dans les JSON originaux.
+[Guide de classement et de revue](docs/CLASSIFICATION_REFERENCES.md).
 
 ### Validation de l'audit V2
 

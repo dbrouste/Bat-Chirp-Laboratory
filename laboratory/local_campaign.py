@@ -87,21 +87,228 @@ def run_key(dataset, *, max_chirps, skip_chirps, fft_size, stft_hop,
 
 def connect_db(path):
     db = sqlite3.connect(str(path))
-    db.execute("""CREATE TABLE IF NOT EXISTS experiments (
-        run_id TEXT PRIMARY KEY, window_points INTEGER NOT NULL,
-        state TEXT NOT NULL, created_at TEXT NOT NULL,
-        finished_at TEXT, elapsed_seconds REAL,
-        output_dir TEXT NOT NULL, error TEXT
-    )""")
-    db.execute("""CREATE TABLE IF NOT EXISTS threshold_results (
-        run_id TEXT NOT NULL, threshold REAL NOT NULL,
-        scenario TEXT NOT NULL, region TEXT NOT NULL,
-        total INTEGER NOT NULL, valid INTEGER NOT NULL,
-        baseline_flagged INTEGER NOT NULL, new_alerts INTEGER NOT NULL,
-        legacy_new_alerts INTEGER NOT NULL,
-        PRIMARY KEY (run_id, threshold, scenario, region)
-    )""")
-    db.commit()
+    try:
+        # SQLite DDL needs an explicit transaction to roll back on failure.
+        db.execute("BEGIN")
+        db.execute("""CREATE TABLE IF NOT EXISTS experiments (
+            run_id TEXT PRIMARY KEY, window_points INTEGER NOT NULL,
+            state TEXT NOT NULL, created_at TEXT NOT NULL,
+            finished_at TEXT, elapsed_seconds REAL,
+            output_dir TEXT NOT NULL, error TEXT
+        )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS threshold_results (
+            run_id TEXT NOT NULL, threshold REAL NOT NULL,
+            scenario TEXT NOT NULL, region TEXT NOT NULL,
+            total INTEGER NOT NULL, valid INTEGER NOT NULL,
+            baseline_flagged INTEGER NOT NULL, new_alerts INTEGER NOT NULL,
+            legacy_new_alerts INTEGER NOT NULL,
+            PRIMARY KEY (run_id, threshold, scenario, region)
+        )""")
+        # IF NOT EXISTS does not validate columns in existing tables.
+        db.execute("""SELECT run_id, window_points, state, created_at,
+            finished_at, elapsed_seconds, output_dir, error
+            FROM experiments LIMIT 0""")
+        db.execute("""SELECT run_id, threshold, scenario, region, total, valid,
+            baseline_flagged, new_alerts, legacy_new_alerts
+            FROM threshold_results LIMIT 0""")
+        # REPLACE requires a unique experiment run ID.
+        if db.execute("""SELECT COALESCE(group_concat(name, ','), '') = 'run_id' COLLATE NOCASE
+            FROM (SELECT name FROM pragma_table_info('experiments')
+                  WHERE pk > 0 ORDER BY pk)""").fetchone() == (0,):
+            raise sqlite3.OperationalError(
+                "experiments requires PRIMARY KEY (run_id)")
+        # Window uniqueness would let REPLACE silently delete a different run.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('experiments') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 1 AND MAX(col.name) = 'window_points' COLLATE NOCASE
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "experiments must not have UNIQUE (window_points)")
+        # REPLACE requires the full composite key to avoid duplicate results.
+        if db.execute("""SELECT COALESCE(group_concat(name, ','), '') =
+            'run_id,threshold,scenario,region' COLLATE NOCASE
+            FROM (SELECT name FROM pragma_table_info('threshold_results')
+                  WHERE pk > 0 ORDER BY pk)""").fetchone() == (0,):
+            raise sqlite3.OperationalError(
+                "threshold_results requires PRIMARY KEY (run_id, threshold, scenario, region)")
+        # Threshold-only uniqueness would let REPLACE delete another run's result.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('threshold_results') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 1 AND MAX(col.name) = 'threshold' COLLATE NOCASE
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "threshold_results must not have UNIQUE (threshold)")
+        # Scenario-only uniqueness would let REPLACE delete another run's result.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('threshold_results') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 1 AND MAX(col.name) = 'scenario' COLLATE NOCASE
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "threshold_results must not have UNIQUE (scenario)")
+        # Region-only uniqueness would let REPLACE delete another run's result.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('threshold_results') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 1 AND MAX(col.name) = 'region' COLLATE NOCASE
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "threshold_results must not have UNIQUE (region)")
+        # Run-only uniqueness would let REPLACE silently delete other thresholds.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('threshold_results') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 1 AND MAX(col.name) = 'run_id' COLLATE NOCASE
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "threshold_results must not have UNIQUE (run_id)")
+        # Run/scenario uniqueness would let REPLACE silently delete other thresholds.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('threshold_results') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 2
+                AND SUM(col.name = 'run_id' COLLATE NOCASE) = 1
+                AND SUM(col.name = 'scenario' COLLATE NOCASE) = 1
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "threshold_results must not have UNIQUE (run_id, scenario)")
+        # Run/region uniqueness would let REPLACE silently delete other thresholds.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('threshold_results') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 2
+                AND SUM(col.name = 'run_id' COLLATE NOCASE) = 1
+                AND SUM(col.name = 'region' COLLATE NOCASE) = 1
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "threshold_results must not have UNIQUE (run_id, region)")
+        # Omitting scenario would let REPLACE silently delete another scenario.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('threshold_results') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 2
+                AND SUM(col.name = 'run_id' COLLATE NOCASE) = 1
+                AND SUM(col.name = 'threshold' COLLATE NOCASE) = 1
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "threshold_results must not have UNIQUE (run_id, threshold)")
+        # Omitting scenario would let REPLACE silently delete another scenario.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('threshold_results') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 3
+                AND SUM(col.name = 'run_id' COLLATE NOCASE) = 1
+                AND SUM(col.name = 'threshold' COLLATE NOCASE) = 1
+                AND SUM(col.name = 'region' COLLATE NOCASE) = 1
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "threshold_results must not have UNIQUE (run_id, threshold, region)")
+        # Omitting region would let REPLACE silently delete another region.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('threshold_results') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 3
+                AND SUM(col.name = 'run_id' COLLATE NOCASE) = 1
+                AND SUM(col.name = 'threshold' COLLATE NOCASE) = 1
+                AND SUM(col.name = 'scenario' COLLATE NOCASE) = 1
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "threshold_results must not have UNIQUE (run_id, threshold, scenario)")
+        # Omitting threshold would let REPLACE silently delete another threshold.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('threshold_results') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 3
+                AND SUM(col.name = 'run_id' COLLATE NOCASE) = 1
+                AND SUM(col.name = 'scenario' COLLATE NOCASE) = 1
+                AND SUM(col.name = 'region' COLLATE NOCASE) = 1
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "threshold_results must not have UNIQUE (run_id, scenario, region)")
+        # Threshold/scenario uniqueness would let REPLACE delete another run's result.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('threshold_results') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 2
+                AND SUM(col.name = 'threshold' COLLATE NOCASE) = 1
+                AND SUM(col.name = 'scenario' COLLATE NOCASE) = 1
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "threshold_results must not have UNIQUE (threshold, scenario)")
+        # Threshold/region uniqueness would let REPLACE delete another run's result.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('threshold_results') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 2
+                AND SUM(col.name = 'threshold' COLLATE NOCASE) = 1
+                AND SUM(col.name = 'region' COLLATE NOCASE) = 1
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "threshold_results must not have UNIQUE (threshold, region)")
+        # Scenario/region uniqueness would let REPLACE delete another run's result.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('threshold_results') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 2
+                AND SUM(col.name = 'scenario' COLLATE NOCASE) = 1
+                AND SUM(col.name = 'region' COLLATE NOCASE) = 1
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "threshold_results must not have UNIQUE (scenario, region)")
+        # Omitting run_id would let REPLACE silently delete another run's result.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('threshold_results') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 3
+                AND SUM(col.name = 'threshold' COLLATE NOCASE) = 1
+                AND SUM(col.name = 'scenario' COLLATE NOCASE) = 1
+                AND SUM(col.name = 'region' COLLATE NOCASE) = 1
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "threshold_results must not have UNIQUE (threshold, scenario, region)")
+        db.commit()
+    except BaseException:
+        try:
+            db.rollback()
+        except BaseException:
+            pass  # Still attempt close and preserve the initialization failure.
+        try:
+            db.close()
+        except BaseException:
+            pass  # Preserve the initialization failure if cleanup also fails.
+        raise
     return db
 
 
@@ -162,6 +369,19 @@ def collect_rows(db, run_ids, thresholds):
 
 
 def save_reports(output, records, runs, definition):
+    from tempfile import NamedTemporaryFile
+
+    records = list(records)
+    columns=("window","threshold","scenario","region","total","valid",
+             "baseline_flagged","new_alerts","legacy_new_alerts")
+    for row in records:
+        unexpected = row.keys() - columns
+        if unexpected:
+            raise ValueError("dict contains fields not in fieldnames: "
+                             + ", ".join(map(repr, unexpected)))
+        for column in columns:
+            if column not in row:
+                raise KeyError(column)
     all_rows = [r for r in records if r["region"]=="all"]
     # By construction, each chirp contributes multiple synthetic variants.
     # A baseline count here is the number of *variants* whose shared original
@@ -169,7 +389,7 @@ def save_reports(output, records, runs, definition):
     summary = {
         "version":"local_campaign_v1",
         "definition":definition,
-        "runs":runs,
+        "runs":list(runs),
         "note":("Threshold sweeps are calculated from precomputed window scores. "
                 "Baseline flags are counts of variants, not unique chirps. "
                 "Reference annotations are not necessarily correct. "
@@ -177,15 +397,8 @@ def save_reports(output, records, runs, definition):
                 "no automatic winner is selected."),
         "results":all_rows,
     }
-    (output/"campaign_summary.json").write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2)+"\n",encoding="utf-8")
-    with (output/"campaign_scores.csv").open("w",encoding="utf-8-sig",newline="") as stream:
-        columns=("window","threshold","scenario","region","total","valid",
-                 "baseline_flagged","new_alerts","legacy_new_alerts")
-        writer=csv.DictWriter(stream,fieldnames=columns)
-        writer.writeheader()
-        writer.writerows(records)
-
+    summary_text = json.dumps(summary, ensure_ascii=False, indent=2, allow_nan=False)+"\n"
+    summary_text.encode("utf-8")  # Validate before replacing any exports.
     table = []
     for row in all_rows:
         valid=row["valid"]
@@ -217,6 +430,36 @@ Le benchmark n'est pas modifié et aucune variante n'est promue automatiquement.
 <p>Le CSV <code>campaign_scores.csv</code> contient aussi la ventilation par
 région (début, milieu, fin). L'historique se trouve dans
 <code>campaign.sqlite</code>.</p></body></html>"""
+    stream = NamedTemporaryFile(mode="w", encoding="utf-8-sig", newline="",
+                               dir=output, prefix=".campaign_scores.",
+                               suffix=".tmp", delete=False)
+    temporary = Path(stream.name)
+    try:
+        try:
+            writer=csv.DictWriter(stream,fieldnames=columns)
+            writer.writeheader()
+            writer.writerows(records)
+        except BaseException:
+            try:
+                stream.close()
+            except BaseException:
+                pass  # Preserve the CSV write failure if close also fails.
+            raise
+        else:
+            stream.close()
+        temporary.replace(output/"campaign_scores.csv")
+    except BaseException:
+        try:
+            temporary.unlink(missing_ok=True)
+        except BaseException:
+            pass  # Preserve the export failure if cleanup also fails.
+        raise
+    else:
+        temporary.unlink(missing_ok=True)
+
+    (output/"campaign_summary.json").write_text(
+        summary_text,encoding="utf-8")
+    document = document.replace("\r\n", "\n")  # Avoid doubling CR on Windows text writes.
     (output/"campaign_report.html").write_text(document,encoding="utf-8")
 
 

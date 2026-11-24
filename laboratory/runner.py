@@ -25,6 +25,8 @@ import traceback
 from .dataset import (collect_annotations, fingerprint_inputs, stable_hash,
                       sha256_file, write_manifest)
 from .aggregation import summarize_results
+from .frozen_dataset import collect_frozen_dataset
+from chirp_geometry import TIME_SCALE_POLICY, MATCHING_POLICY
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -167,9 +169,10 @@ def remove_excluded_references(records: dict[str, dict]) -> tuple[dict[str, dict
     return filtered, excluded
 
 
-def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
+def run(*, annotations: Path | None = None, wav_dir: Path | None = None,
+        dataset: Path | None = None, out: Path, workers: int = 4,
         max_files: int | None = None, options: dict | None = None,
-        use_cache: bool = True,
+        use_cache: bool = True, include_reviewed_negatives: bool = False,
         processing_root: Path = DEFAULT_PROCESSING_ROOT) -> dict:
     """Evaluate WAVs independently and aggregate using the existing benchmark.
 
@@ -178,6 +181,8 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
     """
     if not 1 <= workers <= 8:
         raise ValueError("workers must be between 1 and 8")
+    if include_reviewed_negatives and dataset is None:
+        raise ValueError("Reviewed negatives require a frozen --dataset")
     if max_files is not None and max_files < 1:
         raise ValueError("max_files must be positive")
     params = dict(DEFAULT_OPTIONS)
@@ -206,12 +211,80 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
                 "bat_full_spectrum_processing checkout is outdated: "
                 "run 'git pull origin main' in that repository before "
                 "enabling square_normals_v1")
-    wav_dir = Path(wav_dir).resolve()
     out = Path(out).resolve()
+    if dataset is not None:
+        if annotations is not None or wav_dir is not None:
+            raise ValueError("--dataset cannot be combined with --annotations/--wav-dir")
+        dataset_root = Path(dataset).resolve()
+        if out == dataset_root or out.is_relative_to(dataset_root):
+            raise ValueError("Benchmark output must be outside the frozen dataset")
+        records, dataset_provenance = collect_frozen_dataset(dataset_root)
+        wav_dir = dataset_root
+        annotation_description = dataset_root / "manifest.csv"
+    else:
+        if annotations is None or wav_dir is None:
+            raise ValueError("Use --dataset or both --annotations and --wav-dir")
+        wav_dir = Path(wav_dir).resolve()
+        records = collect_annotations(Path(annotations), wav_dir)
+        dataset_provenance = None
+        annotation_description = Path(annotations).resolve()
     out.mkdir(parents=True, exist_ok=True)
-    records = collect_annotations(Path(annotations), wav_dir)
+    # Validate contradictory negative labels BEFORE excluding any curves.
+    # "no_chirp" is a reviewer decision, not equivalent to no annotations.
+    if dataset_provenance is not None:
+        for name, rec in records.items():
+            if rec.get("review_status") != "no_chirp":
+                continue
+            chirps = rec.get("chirps") or []
+            if not isinstance(chirps, list):
+                raise ValueError(f"Invalid chirp list for {name}")
+            if any(
+                isinstance(c, dict) and (
+                    c.get("source") == "manual"
+                    or c.get("status") == "validated"
+                    or c.get("edited")
+                ) for c in chirps
+            ):
+                raise ValueError(
+                    f"Conflicting no_chirp review and manually reviewed chirp: {name}")
     records, excluded_count = remove_excluded_references(records)
-    if max_files is not None:
+    # The annotated recordings are NOT exhaustive: unannotated regions
+    # remain unknown. Only explicitly reviewed 'no_chirp' WAVs may
+    # serve as negative references.
+    negative_names: set[str] = set()
+    if dataset_provenance is not None:
+        before = len(records)
+        positives = {
+            name: rec for name, rec in records.items()
+            if any(
+                isinstance(chirp, dict)
+                and chirp.get("source") == "manual"
+                and chirp.get("status") == "validated"
+                for chirp in rec.get("chirps", [])
+            )
+        }
+        negatives = {
+            name: rec for name, rec in records.items()
+            if rec.get("review_status") == "no_chirp"
+        }
+        dataset_provenance["wav_with_reference"] = len(positives)
+        dataset_provenance["reviewed_no_chirp_available"] = len(negatives)
+        dataset_provenance["wav_without_reference_skipped"] = (
+            before - len(positives)
+            - (len(negatives) if include_reviewed_negatives else 0)
+        )
+        if not positives:
+            raise ValueError(
+                "No validated manual chirps in the frozen calibration partition")
+        # Preserve the old max-files semantics: select positives first.
+        records = dict(list(positives.items())[:max_files])
+        if include_reviewed_negatives:
+            remaining = (None if max_files is None
+                         else max_files - len(records))
+            records.update(dict(list(negatives.items())[:remaining]))
+            negative_names = set(records) & set(negatives)
+        dataset_provenance["reviewed_no_chirp_evaluated"] = len(negative_names)
+    elif max_files is not None:
         records = dict(list(records.items())[:max_files])
     inputs = fingerprint_inputs(records, wav_dir)
     source_hash = code_fingerprint(processing_root)
@@ -272,6 +345,76 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
     totals = summarize_results(per_file, details,
                                low_snr_importance_weight=params[
                                    "low_snr_importance_weight"])
+    failed_files = {row["file"] for row in per_file if "error" in row}
+    if failed_files:
+        # The reference annotations exist even when a worker has no results.
+        # These chirps must not silently disappear from the denominator.
+        # Records have already been filtered for explicitly excluded QA chirps.
+        missing_references = sum(
+            sum(isinstance(chirp, dict)
+                and chirp.get("source") == "manual"
+                and chirp.get("status") == "validated"
+                for chirp in records[name].get("chirps", []))
+            for name in failed_files
+        )
+        evaluated_references = totals["annotated"]
+        known_references = evaluated_references + missing_references
+        totals["annotated"] = known_references
+        totals["manual_references_evaluated"] = evaluated_references
+        totals["manual_references_failed"] = missing_references
+
+        # An unknown worker SNR means its importance weights are also unknown:
+        # success-only weighted metrics cannot represent the full experiment.
+        totals["weighted_detector_recall"] = None
+        totals["weighted_full_pipeline_within_tolerance_fraction"] = None
+        totals["weighted_missed_chirp_mass"] = None
+        totals["total_chirp_importance"] = None
+
+        # A conservative lower bound for known manual references; never
+        # treat failed computations as measured detection failures.
+        totals["full_pipeline_within_tolerance_fraction"] = (
+            sum(float(row.get("within_snr_tolerance_fraction") or 0.0)
+                for row in details) / known_references
+            if evaluated_references and known_references else None
+        )
+        totals["score_scope"] = "incomplete: partial unweighted lower bound"
+    else:
+        totals["score_scope"] = "complete"
+    for row in per_file:
+        if row["file"] in negative_names:
+            row["reference_class"] = "reviewed_no_chirp"
+    reviewed = [row for row in per_file if row["file"] in negative_names
+                and "error" not in row]
+    false_alarm_wavs = sum(int(row.get("candidates", 0)) > 0
+                          for row in reviewed)
+    false_candidate_alerts = sum(int(row.get("candidates", 0))
+                                 for row in reviewed)
+    # Duration is metadata-only, no audio re-analysis. Diagnostic rates are
+    # omitted if headers cannot be read; candidate counts are still valid.
+    neg_duration_s = None
+    if reviewed:
+        import soundfile as sf
+        try:
+            neg_duration_s = sum(
+                float(sf.info(str(Path(wav_dir) / row["file"])).duration)
+                for row in reviewed
+            )
+        except (OSError, RuntimeError, ValueError):
+            neg_duration_s = None
+    totals["reviewed_no_chirp"] = {
+        "wav_count": len(reviewed),
+        "wavs_with_candidate_alert": false_alarm_wavs,
+        "candidate_alerts": false_candidate_alerts,
+        "wav_false_alarm_fraction": (
+            false_alarm_wavs / len(reviewed) if reviewed else None),
+        "candidate_alerts_per_wav": (
+            false_candidate_alerts / len(reviewed) if reviewed else None),
+        "duration_seconds": neg_duration_s,
+        "candidate_alerts_per_hour": (
+            3600 * false_candidate_alerts / neg_duration_s
+            if neg_duration_s and neg_duration_s > 0 else None),
+        "metric_scope": "detector candidates, not fully tracked chirps",
+    }
     now = datetime.now(timezone.utc)
     duration = perf_counter() - started
     status = "complete" if totals["files_missing"] == 0 else "incomplete"
@@ -285,11 +428,21 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
         "code_fingerprint": source_hash, "dataset_fingerprint": dataset_hash,
         "ground_truth": "manual + validated, excluding annotation_quality=excluded",
         "excluded_manual_references": excluded_count,
+        "positive_annotations_exhaustive": False,
+        "reviewed_negative_label": "review_status=no_chirp",
+        "include_reviewed_negatives": include_reviewed_negatives,
         "scoring_protocol": params["geometry_mode"],
         "geometry_distance_unit": ("kHz_eq" if params["geometry_mode"] == "square_normals_v1"
                                    else "kHz_vertical"),
         "geometric_tolerances_calibrated": False,
-        "annotations": str(Path(annotations).resolve()), "wav_dir": str(wav_dir),
+        "geometry_time_scale_policy": (
+            TIME_SCALE_POLICY if params["geometry_mode"] == "square_normals_v1"
+            else "vertical_legacy"),
+        "geometry_matching_policy": (
+            MATCHING_POLICY if params["geometry_mode"] == "square_normals_v1"
+            else "vertical_legacy"),
+        "annotations": str(annotation_description), "wav_dir": str(wav_dir),
+        "frozen_dataset": dataset_provenance,
         "options": params, "workers": workers,
         "files_from_cache": cache_count,
         "duration_s": duration,
@@ -316,9 +469,13 @@ def run(*, annotations: Path, wav_dir: Path, out: Path, workers: int = 4,
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--annotations", type=Path, required=True,
-                        help="Single JSON or directory with annotation JSONs")
-    parser.add_argument("--wav-dir", type=Path, required=True)
+    input_mode = parser.add_mutually_exclusive_group(required=True)
+    input_mode.add_argument("--dataset", type=Path,
+                            help="Frozen dataset-v1 manifest, calibration only")
+    input_mode.add_argument("--annotations", type=Path,
+                            help="Single JSON or directory with annotation JSONs")
+    parser.add_argument("--wav-dir", type=Path,
+                        help="Required with --annotations; not used with --dataset")
     parser.add_argument("--processing-root", type=Path,
                         default=DEFAULT_PROCESSING_ROOT,
                         help="External bat_full_spectrum_processing checkout")
@@ -333,10 +490,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--low-snr-weight", type=float, default=0.2)
     parser.add_argument("--no-echo-trim", action="store_true")
     parser.add_argument("--no-cache", action="store_true")
+    parser.add_argument("--include-reviewed-negatives", action="store_true",
+                        help="Also evaluate explicit no_chirp WAVs from frozen calibration")
     args = parser.parse_args(argv)
+    if args.dataset is None and args.wav_dir is None:
+        parser.error("--wav-dir is required with --annotations")
+    if args.dataset is not None and args.wav_dir is not None:
+        parser.error("--wav-dir must not be used with --dataset")
     report = run(annotations=args.annotations, wav_dir=args.wav_dir,
+                 dataset=args.dataset,
                  out=args.out, workers=args.workers, max_files=args.max_files,
                  use_cache=not args.no_cache,
+                 include_reviewed_negatives=args.include_reviewed_negatives,
                  processing_root=args.processing_root,
                  options={"n_fft": args.n_fft, "hop": args.hop,
                           "max_per_file": args.max_per_file,
@@ -348,6 +513,7 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps({"status": report["metadata"]["status"],
                       "wav_evaluated": totals["files_evaluated"],
                       "manual_chirps": totals["annotated"],
+                      "reviewed_no_chirp": totals["reviewed_no_chirp"],
                       "weighted_detector_recall": totals["weighted_detector_recall"],
                       "duration_s": report["metadata"]["duration_s"],
                       "report": str((args.out / "report.html").resolve())},

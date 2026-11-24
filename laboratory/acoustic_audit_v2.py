@@ -18,6 +18,8 @@ import soundfile as sf
 from .acoustic_audit import DEFAULT_ANALYSER_ROOT, load_display_pipeline, points_of
 from .transverse_ridge import continuous_normal_ridge
 from .local_quality import local_error_metrics, experimental_local_flag
+from .quality_audit import inspect_chirp
+from .reference_suspicion import suspicion_metrics, SCORE_VERSION
 
 FIELDS = (
     "partition", "session", "wav", "annotation", "source_wav", "source_json",
@@ -35,6 +37,8 @@ FIELDS = (
     "local_end_median_abs_khz_eq", "local_flag_experimental",
     "local_signed_windows_json", "local_abs_windows_json",
     "review_priority", "reason", "error",
+    "suspicion_score", "suspicion_reason", "suspicion_reliability",
+    "suspicion_breakdown_json", "suspicion_score_version", "quality_flags",
 )
 
 
@@ -281,6 +285,7 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
         raise ValueError("empty manifest")
     pipeline=load_display_pipeline(Path(analyser_root))
     cache={}
+    wav_headers={}
     results=[]
     diagnostics=[]
     for entry in manifest:
@@ -310,6 +315,14 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
                                                     "source_wav","source_json")})
             row.update(wav=entry["dataset_wav"],annotation=entry["dataset_json"],
                        chirp_id=chirp.get("chirp_id",""))
+            if wav not in wav_headers:
+                try:
+                    info = sf.info(str(wav))
+                    wav_headers[wav] = (info.duration, info.samplerate)
+                except (OSError, RuntimeError, ValueError):
+                    wav_headers[wav] = (None, None)
+            duration_s, sample_rate = wav_headers[wav]
+            geometry_flags = inspect_chirp(chirp, duration_s, sample_rate)["flags"]
             try:
                 row.update(evaluate_chirp_v2(wav,chirp,pipeline,fft_size=fft_size,
                          overlap_fraction=overlap_fraction,
@@ -324,6 +337,7 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
                            reason="analysis_error")
                 diagnostics.append({"wav":row["wav"],"chirp_id":row["chirp_id"],
                                     "error":str(exc)})
+            row.update(suspicion_metrics(row, geometry_flags))
             results.append(row)
         if max_chirps is not None and len(results)>=max_chirps:
             break
@@ -336,10 +350,22 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
         writer.writerows(results)
     priority={"review_first":0,"review_suggested":1,"no_alert_unverified":2,
               "analysis_error":3}
-    queue=sorted([r for r in results if r["review_priority"] in
-                  ("review_first","review_suggested")],
-                 key=lambda r:(priority[r["review_priority"]],
-                               -float(r["median_abs_normal_khz"])))
+    def review_sort_key(row):
+        # Numeric scores first; invalid analyses go last rather than being
+        # misrepresented as confirmed annotation errors.
+        raw = row["suspicion_score"]
+        return (raw == "", -float(raw) if raw != "" else 0,
+                priority.get(row["review_priority"], 9),
+                str(row["wav"]), str(row["chirp_id"]))
+
+    ranked = sorted(results, key=review_sort_key)
+    with (destination/"reference_review_ranked.csv").open(
+            "w", encoding="utf-8-sig", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=FIELDS)
+        writer.writeheader()
+        writer.writerows(ranked)
+    queue = sorted((r for r in results if r["review_priority"] in
+                    ("review_first", "review_suggested")), key=review_sort_key)
     with (destination/"annotation_review_queue.csv").open("w",encoding="utf-8-sig",newline="") as stream:
         writer=csv.DictWriter(stream,fieldnames=FIELDS)
         writer.writeheader()
@@ -456,6 +482,7 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
     summary={
         "version":"continuous_normals_square_v3",
         "partition":"calibration",
+        "dataset":str(root),
         "representation":"Bat-Acoustic-Analyser mixed display",
         "stft_percent":100-reassignment_percent,
         "reassignment_percent":reassignment_percent,
@@ -467,6 +494,9 @@ def run_v2(dataset, output, *, analyser_root=DEFAULT_ANALYSER_ROOT,
         "chirps_processed":len(results),
         "review_priority_counts":dict(Counter(r["review_priority"] for r in results)),
         "queue_count":len(queue),
+        "ranked_count":len(ranked),
+        "suspicion_score_version":SCORE_VERSION,
+        "suspicion_score_calibrated":False,
         "diagnostics":len(diagnostics),
         "local_window_points":local_window,
         "local_threshold_experimental_khz_eq":local_threshold,

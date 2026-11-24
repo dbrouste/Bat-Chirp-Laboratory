@@ -110,8 +110,12 @@ def test_square_calibration_uses_full_curve_not_median_segment_slope():
 def test_near_horizontal_fallback_and_no_steep_slope_cap():
     assert square_time_scale([20, 24], [80, 80]) == (
         10.0, "near_horizontal_fallback")
-    assert square_time_scale([20, 24], [80, 81]) == (
-        10.0, "near_horizontal_fallback")
+    # A small nonzero slope now blends smoothly into the square regime.
+    # At ratio 0.25 the cubic weight is 0.15625, yielding 8.4765625.
+    scale, mode = square_time_scale([20, 24], [80, 81])
+    assert scale == pytest.approx(8.4765625)
+    assert mode == "near_horizontal_transition"
+
     assert square_time_scale([20, 20.5], [150, 50]) == (
         200.0, "square")
     with pytest.raises(ValueError, match="invalid manual chirp"):
@@ -183,6 +187,15 @@ def test_run_v2_excludes_test_and_emits_queue(tmp_path,monkeypatch):
         rows=list(csv.DictReader(file))
     assert len(rows)==1 and rows[0]["partition"]=="calibration"
     assert rows[0]["source_wav"]==manifest[0]["source_wav"]
+    assert rows[0]["suspicion_score_version"] == summary["suspicion_score_version"]
+    assert 0 <= int(rows[0]["suspicion_score"]) <= 100
+    ranked_path = tmp_path / "results" / "reference_review_ranked.csv"
+    with ranked_path.open(encoding="utf-8-sig") as stream:
+        ranked = list(csv.DictReader(stream))
+    assert len(ranked) == 1
+    assert ranked[0]["chirp_id"] == str(chirp()["chirp_id"])
+    assert ranked[0]["source_json"] == manifest[0]["source_json"]
+    assert summary["dataset"] == str(root.resolve())
 
 
 def test_fine_grid_can_be_overridden_for_higher_overlap(tmp_path):
