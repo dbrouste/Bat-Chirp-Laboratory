@@ -142,6 +142,14 @@ def connect_db(path):
                   WHERE pk > 0 ORDER BY pk)""").fetchone() == (0,):
             raise sqlite3.OperationalError(
                 "threshold_results requires PRIMARY KEY (run_id, threshold, scenario, region)")
+        # Expression uniqueness can also let REPLACE delete another run's result.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('threshold_results') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1 AND col.cid = -2
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "threshold_results must not have UNIQUE expression indexes")
         # Threshold-only uniqueness would let REPLACE delete another run's result.
         if db.execute("""SELECT EXISTS (
             SELECT 1 FROM pragma_index_list('threshold_results') AS idx
