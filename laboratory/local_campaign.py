@@ -117,6 +117,14 @@ def connect_db(path):
                   WHERE pk > 0 ORDER BY pk)""").fetchone() == (0,):
             raise sqlite3.OperationalError(
                 "experiments requires PRIMARY KEY (run_id)")
+        # Expression uniqueness can also let REPLACE silently delete a different run.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('experiments') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1 AND col.cid = -2
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "experiments must not have UNIQUE expression indexes")
         # Window uniqueness would let REPLACE silently delete a different run.
         if db.execute("""SELECT EXISTS (
             SELECT 1 FROM pragma_index_list('experiments') AS idx
