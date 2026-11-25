@@ -145,6 +145,16 @@ def connect_db(path):
             )""").fetchone() == (1,):
             raise sqlite3.OperationalError(
                 "experiments must not have UNIQUE (state)")
+        # Timestamp uniqueness would let REPLACE silently delete a different run.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('experiments') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 1 AND MAX(col.name) = 'created_at' COLLATE NOCASE
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "experiments must not have UNIQUE (created_at)")
         # Window/state uniqueness would let REPLACE silently delete a different run.
         if db.execute("""SELECT EXISTS (
             SELECT 1 FROM pragma_index_list('experiments') AS idx
