@@ -135,6 +135,16 @@ def connect_db(path):
             )""").fetchone() == (1,):
             raise sqlite3.OperationalError(
                 "experiments must not have UNIQUE (window_points)")
+        # State uniqueness would let REPLACE silently delete another completed run.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('experiments') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 1 AND MAX(col.name) = 'state' COLLATE NOCASE
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "experiments must not have UNIQUE (state)")
         # REPLACE requires the full composite key to avoid duplicate results.
         if db.execute("""SELECT COALESCE(group_concat(name, ','), '') =
             'run_id,threshold,scenario,region' COLLATE NOCASE
