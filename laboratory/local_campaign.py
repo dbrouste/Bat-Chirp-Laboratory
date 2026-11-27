@@ -165,6 +165,16 @@ def connect_db(path):
             )""").fetchone() == (1,):
             raise sqlite3.OperationalError(
                 "experiments must not have UNIQUE (finished_at)")
+        # Output-directory uniqueness would let REPLACE silently delete another run.
+        if db.execute("""SELECT EXISTS (
+            SELECT 1 FROM pragma_index_list('experiments') AS idx
+            JOIN pragma_index_info(idx.name) AS col
+            WHERE idx."unique" = 1
+            GROUP BY idx.name
+            HAVING COUNT(*) = 1 AND MAX(col.name) = 'output_dir' COLLATE NOCASE
+            )""").fetchone() == (1,):
+            raise sqlite3.OperationalError(
+                "experiments must not have UNIQUE (output_dir)")
         # Window/state uniqueness would let REPLACE silently delete a different run.
         if db.execute("""SELECT EXISTS (
             SELECT 1 FROM pragma_index_list('experiments') AS idx
